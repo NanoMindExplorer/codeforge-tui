@@ -10,13 +10,14 @@ import (
 )
 
 type StatusBarModel struct {
-    width    int
-    Provider string
-    Mode     string
-    Branch   string
-    Workdir  string
-    Cost     float64
-    Tokens   int
+    width     int
+    Provider  string
+    Mode      string
+    Branch    string
+    Workdir   string
+    Cost      float64
+    Tokens    int
+    Streaming bool // true saat AI sedang streaming atau agent berjalan
 }
 
 func NewStatusBarModel() StatusBarModel {
@@ -57,13 +58,18 @@ func (s StatusBarModel) ViewTop() string {
         Foreground(lipgloss.Color("#94A3B8")).
         Padding(0, 1)
 
-    brand := brandStyle.Render("CodeForge")
+    brand := brandStyle.Render("⚡ CodeForge")
     mode := modeStyle.Render(s.Mode)
 
-    info := fmt.Sprintf("git:%s | provider:%s | tok:%d | $%.4f",
-        s.Branch, s.Provider, s.Tokens, s.Cost)
+    aiStatus := s.Provider
+    if s.Streaming {
+        aiStatus = "⠋ " + s.Provider + " …"
+    }
 
-    helpHint := infoStyle.Render("? help  / cmds  q quit")
+    info := fmt.Sprintf("  %s  git:%s  tok:%d  $%.4f  ",
+        aiStatus, s.Branch, s.Tokens, s.Cost)
+
+    helpHint := infoStyle.Render("?=help  /=cmd  q=quit")
 
     middleWidth := s.width - lipgloss.Width(brand) - lipgloss.Width(mode) - lipgloss.Width(helpHint) - 2
     if middleWidth < 0 {
@@ -84,8 +90,8 @@ func (s StatusBarModel) ViewBottom() string {
         Width(s.width).
         Padding(0, 1)
 
-    left := "1:chat  2:diff  3:ctx  Tab:cycle  i:insert  :cmd"
-    right := time.Now().Format("15:04:05")
+    left := "i:chat  I:/act  /:cmd  1-3:pane  Tab:next  j/k:scroll  q:quit"
+    right := time.Now().Format("15:04")
 
     padding := s.width - len(left) - len(right) - 2
     if padding < 0 {

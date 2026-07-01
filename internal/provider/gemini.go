@@ -26,13 +26,36 @@ type geminiContent struct {
 }
 
 type geminiPart struct {
-    Text string `json:"text,omitempty"`
+    Text             string                   `json:"text,omitempty"`
+    FunctionCall     *geminiFunctionCall      `json:"functionCall,omitempty"`
+    FunctionResponse *geminiFunctionResponse  `json:"functionResponse,omitempty"`
+}
+
+type geminiFunctionCall struct {
+    Name string         `json:"name"`
+    Args map[string]any `json:"args"`
+}
+
+type geminiFunctionResponse struct {
+    Name     string         `json:"name"`
+    Response map[string]any `json:"response"`
+}
+
+type geminiTool struct {
+    FunctionDeclarations []geminiFunctionDeclaration `json:"functionDeclarations"`
+}
+
+type geminiFunctionDeclaration struct {
+    Name        string `json:"name"`
+    Description string `json:"description,omitempty"`
+    Parameters  any    `json:"parameters,omitempty"`
 }
 
 type geminiRequest struct {
-    Contents          []geminiContent   `json:"contents"`
-    SystemInstruction *geminiContent    `json:"systemInstruction,omitempty"`
-    GenerationConfig  *geminiGenConfig  `json:"generationConfig,omitempty"`
+    Contents          []geminiContent  `json:"contents"`
+    SystemInstruction *geminiContent   `json:"systemInstruction,omitempty"`
+    GenerationConfig  *geminiGenConfig `json:"generationConfig,omitempty"`
+    Tools             []geminiTool     `json:"tools,omitempty"`
 }
 
 type geminiGenConfig struct {
@@ -91,19 +114,69 @@ func (p *GeminiProvider) ValidateConfig() error {
     return nil
 }
 
+// toGeminiContents converts the provider-agnostic conversation into Gemini's
+// content format, including assistant tool calls (role "model" with
+// functionCall parts) and tool results (role "function" with
+// functionResponse parts).
 func toGeminiContents(msgs []Message) []geminiContent {
     out := make([]geminiContent, 0, len(msgs))
     for _, m := range msgs {
-        role := "user"
-        if m.Role == "assistant" {
-            role = "model"
+        switch m.Role {
+        case RoleTool:
+            respObj := map[string]any{"result": m.Content}
+            if m.IsError {
+                respObj = map[string]any{"error": m.Content}
+            }
+            out = append(out, geminiContent{
+                Role: "function",
+                Parts: []geminiPart{{
+                    FunctionResponse: &geminiFunctionResponse{
+                        Name:     m.ToolName,
+                        Response: respObj,
+                    },
+                }},
+            })
+        case RoleAssistant:
+            var parts []geminiPart
+            if m.Content != "" {
+                parts = append(parts, geminiPart{Text: m.Content})
+            }
+            for _, tc := range m.ToolCalls {
+                var args map[string]any
+                if err := json.Unmarshal([]byte(tc.Input), &args); err != nil {
+                    args = map[string]any{}
+                }
+                parts = append(parts, geminiPart{
+                    FunctionCall: &geminiFunctionCall{Name: tc.Name, Args: args},
+                })
+            }
+            if len(parts) == 0 {
+                parts = []geminiPart{{Text: ""}}
+            }
+            out = append(out, geminiContent{Role: "model", Parts: parts})
+        default:
+            out = append(out, geminiContent{
+                Role:  "user",
+                Parts: []geminiPart{{Text: m.Content}},
+            })
         }
-        out = append(out, geminiContent{
-            Role:  role,
-            Parts: []geminiPart{{Text: m.Content}},
-        })
     }
     return out
+}
+
+func toGeminiTools(defs []ToolDefinition) []geminiTool {
+    if len(defs) == 0 {
+        return nil
+    }
+    fns := make([]geminiFunctionDeclaration, 0, len(defs))
+    for _, d := range defs {
+        fns = append(fns, geminiFunctionDeclaration{
+            Name:        d.Name,
+            Description: d.Description,
+            Parameters:  d.InputSchema,
+        })
+    }
+    return []geminiTool{{FunctionDeclarations: fns}}
 }
 
 func (p *GeminiProvider) Complete(ctx context.Context, req CompletionRequest) (*CompletionResponse, error) {
@@ -125,6 +198,7 @@ func (p *GeminiProvider) Complete(ctx context.Context, req CompletionRequest) (*
             MaxOutputTokens: maxTokens,
             Temperature:     req.Temperature,
         },
+        Tools: toGeminiTools(req.Tools),
     }
     if req.System != "" {
         gReq.SystemInstruction = &geminiContent{
@@ -165,8 +239,18 @@ func (p *GeminiProvider) Complete(ctx context.Context, req CompletionRequest) (*
         OutputTokens: gResp.UsageMetadata.CandidatesTokenCount,
     }
     for _, cand := range gResp.Candidates {
-        for _, part := range cand.Content.Parts {
-            result.Content += part.Text
+        for i, part := range cand.Content.Parts {
+            if part.Text != "" {
+                result.Content += part.Text
+            }
+            if part.FunctionCall != nil {
+                argsJSON, _ := json.Marshal(part.FunctionCall.Args)
+                result.ToolCalls = append(result.ToolCalls, ToolCall{
+                    ID:    fmt.Sprintf("call_%d_%s", i, part.FunctionCall.Name),
+                    Name:  part.FunctionCall.Name,
+                    Input: string(argsJSON),
+                })
+            }
         }
         if cand.FinishReason != "" {
             result.StopReason = cand.FinishReason
@@ -175,6 +259,9 @@ func (p *GeminiProvider) Complete(ctx context.Context, req CompletionRequest) (*
     return result, nil
 }
 
+// Stream provides plain text streaming and does not support tool calling.
+// The agent loop uses Complete for turns where the model may call tools;
+// Stream remains available for simple, tool-free chat.
 func (p *GeminiProvider) Stream(ctx context.Context, req CompletionRequest) (<-chan StreamToken, error) {
     if err := p.ValidateConfig(); err != nil {
         return nil, err

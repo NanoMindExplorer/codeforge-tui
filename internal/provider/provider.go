@@ -6,16 +6,31 @@ import (
     "fmt"
 )
 
+// Role constants for provider.Message.Role.
+const (
+    RoleUser      = "user"
+    RoleAssistant = "assistant"
+    RoleTool      = "tool"
+)
+
 type Message struct {
-    Role      string    `json:"role"`
-    Content   string    `json:"content"`
+    Role    string `json:"role"` // "user" | "assistant" | "tool"
+    Content string `json:"content"`
+
+    // ToolCalls is set on assistant messages that invoke one or more tools.
     ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+
+    // The following three fields are set on role="tool" messages, which
+    // carry the result of executing a single tool call back to the model.
+    ToolCallID string `json:"tool_call_id,omitempty"` // references ToolCall.ID
+    ToolName   string `json:"tool_name,omitempty"`
+    IsError    bool   `json:"is_error,omitempty"`
 }
 
 type ToolCall struct {
     ID    string `json:"id"`
     Name  string `json:"name"`
-    Input string `json:"input"`
+    Input string `json:"input"` // raw JSON arguments object
 }
 
 type ToolDefinition struct {

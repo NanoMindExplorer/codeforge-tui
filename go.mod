@@ -6,7 +6,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/go-git/go-git/v5 v5.19.1
-	github.com/liushuangls/go-anthropic v1.6.0
+	github.com/liushuangls/go-anthropic/v2 v2.21.1
 	github.com/spf13/viper v1.21.0
 )
 

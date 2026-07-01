@@ -22,7 +22,7 @@ func NewContextModel(workdir string) ContextModel {
     return ContextModel{
         workdir: workdir,
         files:   []string{},
-        tools:   []string{"read_file", "write_file", "list_dir"},
+        tools:   []string{"read_file", "write_file", "list_dir", "grep_search", "run_command"},
     }
 }
 

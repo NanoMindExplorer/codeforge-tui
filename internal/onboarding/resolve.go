@@ -217,7 +217,11 @@ func FormatStatus(cfg *config.Config, activeName string) string {
 // WelcomeMessage is shown once in the TUI after bootstrap.
 func WelcomeMessage(cfg *config.Config, activeName, activeModel string, healthy bool) string {
 	var b strings.Builder
-	b.WriteString("Welcome to CodeForge\n")
+	// Start brand: title large, byline small
+	b.WriteString(BrandName)
+	b.WriteString("\n")
+	b.WriteString(BrandByline)
+	b.WriteString("\n")
 	b.WriteString("────────────────────\n")
 	present := PresentCloudKeys()
 	res := ResolveActive(cfg)

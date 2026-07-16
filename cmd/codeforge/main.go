@@ -423,12 +423,9 @@ func runSessionCLI(args []string) int {
 }
 
 func printBanner() {
-	fmt.Printf(`
-╔══════════════════════════════════════════════════════════════╗
-║   CodeForge TUI v%s  |  by %s  |  %s                 ║
-║   Grok-parity TUI · ACP · Plan · Sessions · Permissions      ║
-╚══════════════════════════════════════════════════════════════╝
-`, ProjectVersion, ProjectAuthor, ProjectYear)
+	// Match onboarding start brand: CodeForge + small By NanoMindExplorer
+	onboarding.WriteBrandStart(os.Stdout, true)
+	fmt.Printf("  v%s  ·  Grok-parity TUI · ACP · Plan · Sessions\n\n", ProjectVersion)
 }
 
 func printUsage() {

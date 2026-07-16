@@ -39,10 +39,9 @@ func RunWizard(opt WizardOptions) error {
 		cfg, _ = config.Load()
 	}
 
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, "╔══════════════════════════════════════════════════════════╗")
-	fmt.Fprintln(out, "║  CodeForge — First-run setup (multi-provider clear)      ║")
-	fmt.Fprintln(out, "╚══════════════════════════════════════════════════════════╝")
+	// Start screen: CodeForge + small By NanoMindExplorer
+	WriteBrandStart(out, true)
+	fmt.Fprintln(out, "  First-run setup  ·  multi-provider")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "You need one API key. Several providers can coexist;")
 	fmt.Fprintln(out, "only ONE is active at a time (footer shows which).")

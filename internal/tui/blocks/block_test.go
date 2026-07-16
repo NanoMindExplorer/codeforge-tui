@@ -110,3 +110,21 @@ func TestSelectNavigation(t *testing.T) {
 	s.SelectNext()
 	s.ToggleCollapse()
 }
+
+func TestDiffMeta(t *testing.T) {
+	d := "--- a\n+++ b\n@@\n-line\n+line2\n+line3\n"
+	m := DiffMeta(d)
+	if m != "+2 -1" {
+		t.Fatal(m)
+	}
+}
+
+func TestThinkingSeal(t *testing.T) {
+	s := NewStore()
+	s.AddThinking("planning…")
+	s.SealThinking()
+	bl := s.Blocks()
+	if len(bl) != 1 || bl[0].Streaming {
+		t.Fatal(bl)
+	}
+}

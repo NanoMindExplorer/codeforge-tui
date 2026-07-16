@@ -219,6 +219,8 @@ func (c *ChatModel) SubmitAgent(task string) tea.Cmd {
 	c.messages = append(c.messages, provider.Message{Role: provider.RoleUser, Content: task})
 	c.streaming = true
 	c.agentFull = ""
+	// Phase 7: synthetic thinking block until first text/tool
+	c.store.AddThinking("planning…")
 	c.store.GotoBottom()
 
 	msgs := make([]provider.Message, len(c.messages))
@@ -322,9 +324,11 @@ func (c ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ev := msg.Ev
 		switch ev.Kind {
 		case agent.EventText:
+			c.store.SealThinking()
 			c.store.AppendAssistantChunk(ev.Text)
 			c.agentFull += ev.Text
 		case agent.EventToolCall:
+			c.store.SealThinking()
 			c.store.SealAssistant()
 			c.store.AddToolCall(ev.ToolName, truncate(ev.ToolInput, 120))
 		case agent.EventToolProgress:
@@ -338,6 +342,7 @@ func (c ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				c.store.AddDiff(ev.ToolName, ev.ToolDiff, "")
 			}
 		case agent.EventDone:
+			c.store.SealThinking()
 			c.store.SealAssistant()
 			if c.agentFull != "" {
 				c.messages = append(c.messages, provider.Message{
@@ -350,6 +355,7 @@ func (c ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			c.streaming = false
 			c.agentFull = ""
 		case agent.EventError:
+			c.store.SealThinking()
 			c.store.SealAssistant()
 			c.store.AddSystem("⚠ agent: " + ev.Error.Error())
 			c.streaming = false
@@ -417,6 +423,7 @@ func (c ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				c.store.PageDown(msg.String() == "ctrl+d")
 			case "pgup", "ctrl+u":
 				c.store.PageUp(msg.String() == "ctrl+u")
+			// Phase 7: copy selected block (y body, Y meta) — handled at model if needed
 			}
 		}
 	}
@@ -597,6 +604,7 @@ TOOLS:
 - Discovery: codebase_search, grep_search, read_file, list_dir, research
 - Edits: search_replace, apply_patch (preferred), write_file (new/full rewrite only)
 - Design plan: write_plan, exit_plan_mode, enter_plan_mode
+- Tasks: todo_write (footer badge); run_command background=true for long jobs
 - Verify: diagnostics, run_command
 - Docs: fetch_url
 - GitHub: github tool (pr_*, issue_*, babysit, push, pull, …)

@@ -26,6 +26,7 @@ type Options struct {
 	Plan           bool
 	AlwaysApprove  bool // YOLO / always_approve
 	DontAsk        bool // deny anything that would prompt
+	Model          string
 	MaxIter        int
 	Timeout        time.Duration
 	WorkDir        string
@@ -91,6 +92,11 @@ func Run(opt Options, w io.Writer) (Result, error) {
 	p, err := rt.ProvReg.Current()
 	if err != nil {
 		return Result{OK: false, Error: err.Error()}, err
+	}
+	if opt.Model != "" {
+		if err := p.SetModel(opt.Model); err != nil {
+			return Result{OK: false, Error: "model: " + err.Error()}, err
+		}
 	}
 	if err := p.ValidateConfig(); err != nil {
 		return Result{OK: false, Error: err.Error()}, err

@@ -360,7 +360,9 @@ type ShellExec struct{ WorkDir string }
 
 func (s *ShellExec) Name() string { return "run_command" }
 func (s *ShellExec) Description() string {
-    return "Execute a shell command in the project directory (30s timeout). Use for running tests, builds, or git commands"
+    return `Execute a shell command in the project directory (default 30s timeout).
+Set background=true to start a long job and return immediately (see /tasks).
+Set timeout_sec for a longer synchronous wait (max 600).`
 }
 
 func (s *ShellExec) Schema() map[string]any {
@@ -371,13 +373,23 @@ func (s *ShellExec) Schema() map[string]any {
                 "type":        "string",
                 "description": "The shell command to execute",
             },
+            "background": map[string]any{
+                "type":        "boolean",
+                "description": "If true, run in background and return task id",
+            },
+            "timeout_sec": map[string]any{
+                "type":        "integer",
+                "description": "Sync timeout seconds (default 30, max 600)",
+            },
         },
         "required": []string{"command"},
     }
 }
 
 type shellInput struct {
-    Command string `json:"command"`
+    Command    string `json:"command"`
+    Background bool   `json:"background"`
+    TimeoutSec int    `json:"timeout_sec"`
 }
 
 const (
@@ -394,7 +406,27 @@ func (s *ShellExec) Execute(input json.RawMessage) Result {
         return Result{Error: "command required"}
     }
 
-    ctx, cancel := context.WithTimeout(context.Background(), shellTimeout)
+    if in.Background {
+        // avoid import cycle: use callback set by registry/bootstrap
+        if bgStart != nil {
+            id, err := bgStart(s.WorkDir, in.Command)
+            if err != nil {
+                return Result{Error: err.Error()}
+            }
+            return Result{Success: true, Output: fmt.Sprintf("Background task %s started: %s\nUse /tasks to list; /tasks cancel %s to stop.", id, in.Command, id)}
+        }
+        return Result{Error: "background tasks unavailable"}
+    }
+
+    to := shellTimeout
+    if in.TimeoutSec > 0 {
+        if in.TimeoutSec > 600 {
+            in.TimeoutSec = 600
+        }
+        to = time.Duration(in.TimeoutSec) * time.Second
+    }
+
+    ctx, cancel := context.WithTimeout(context.Background(), to)
     defer cancel()
 
     shell, flag := "/bin/sh", "-c"
@@ -415,12 +447,20 @@ func (s *ShellExec) Execute(input json.RawMessage) Result {
     }
 
     if ctx.Err() == context.DeadlineExceeded {
-        return Result{Success: false, Output: output, Error: fmt.Sprintf("command timed out after %s", shellTimeout)}
+        return Result{Success: false, Output: output, Error: fmt.Sprintf("command timed out after %s", to)}
     }
     if runErr != nil {
         return Result{Success: false, Output: output, Error: fmt.Sprintf("exit error: %v", runErr)}
     }
     return Result{Success: true, Output: output}
+}
+
+// bgStart is wired from bgtask to avoid import cycles.
+var bgStart func(workdir, command string) (id string, err error)
+
+// SetBackgroundStarter wires background shell starts.
+func SetBackgroundStarter(fn func(workdir, command string) (string, error)) {
+    bgStart = fn
 }
 
 // ---------------------------------------------------------------------
@@ -433,6 +473,8 @@ type Registry struct {
 }
 
 func NewRegistry(workDir string) *Registry {
+    // Wire background shell (lazy import via callback set from app/tui if needed)
+    ensureBackgroundWire()
     r := &Registry{tools: make(map[string]Tool)}
     staged := NewStagedWriter(workDir)
     r.Register(&FileReader{WorkDir: workDir})
@@ -445,6 +487,8 @@ func NewRegistry(workDir string) *Registry {
     r.Register(&WritePlan{Staged: staged})
     r.Register(&ExitPlanMode{Staged: staged})
     r.Register(&EnterPlanMode{Staged: staged})
+    // Phase 7
+    r.Register(&TodoWrite{})
     r.Register(&DirLister{WorkDir: workDir})
     r.Register(&GrepSearch{WorkDir: workDir})
     r.Register(&CodebaseSearch{WorkDir: workDir})

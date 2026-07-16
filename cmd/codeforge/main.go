@@ -25,7 +25,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "0.9.5"
+	ProjectVersion = "0.9.6"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -178,6 +178,11 @@ func runAgentCLI(args []string) int {
 			opt.Plan = false
 		case "--dont-ask":
 			opt.DontAsk = true
+		case "--model", "-m":
+			if i+1 < len(args) {
+				i++
+				opt.Model = args[i]
+			}
 		case "--quiet", "-q":
 			opt.Quiet = true
 		case "--workdir", "-C":
@@ -383,6 +388,7 @@ func agentUsage() string {
   --act            Apply writes immediately (default)
   --always-approve, --yolo  Bypass ask (deny rules still apply)
   --dont-ask       Deny anything that would prompt (CI lockdown)
+  --model, -m      Model id for current provider
   --workdir, -C    Project directory
   --timeout SEC    Overall timeout (default 600)
   --max-iter N     Agent iterations (default 12)

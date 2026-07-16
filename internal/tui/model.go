@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/codeforge/tui/internal/agent"
+	"github.com/codeforge/tui/internal/bgtask"
 	"github.com/codeforge/tui/internal/checkpoint"
 	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/git"
@@ -25,10 +26,13 @@ import (
 	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/session"
 	"github.com/codeforge/tui/internal/theme"
+	"github.com/codeforge/tui/internal/todos"
 	"github.com/codeforge/tui/internal/tool"
 	"github.com/codeforge/tui/internal/tui/sessionpicker"
 	"github.com/codeforge/tui/internal/tui/slashmenu"
 	"github.com/codeforge/tui/internal/tui/themepicker"
+	"github.com/codeforge/tui/internal/ui/blockview"
+	"github.com/codeforge/tui/internal/ui/clipboard"
 	"github.com/codeforge/tui/internal/ui/components"
 	"github.com/codeforge/tui/internal/ui/filepicker"
 	"github.com/codeforge/tui/internal/ui/markdown"
@@ -36,6 +40,7 @@ import (
 	"github.com/codeforge/tui/internal/ui/permask"
 	"github.com/codeforge/tui/internal/ui/planreview"
 	"github.com/codeforge/tui/internal/ui/review"
+	"github.com/codeforge/tui/internal/ui/settings"
 )
 
 // Grok-style layout: full-width scrollback + bottom prompt.
@@ -67,11 +72,13 @@ type Model struct {
 	palette palette.Model
 	picker  filepicker.Model
 	review  review.Model
-	planUI  planreview.Model
+	planUI   planreview.Model
 	slash    slashmenu.Model
 	themes   themepicker.Model
 	sessions sessionpicker.Model
 	rewinds  sessionpicker.RewindModel
+	blockV   blockview.Model
+	settings settings.Model
 	toast    components.Toast
 
 	streamCh <-chan provider.StreamToken
@@ -147,6 +154,8 @@ const (
 	ModeRewindPick
 	ModePlanReview
 	ModePermAsk
+	ModeBlockView
+	ModeSettings
 )
 
 func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry, repo *git.Repo, workdir string) Model {
@@ -221,6 +230,8 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		themes:      themepicker.New(),
 		sessions:    sessionpicker.New(),
 		rewinds:     sessionpicker.NewRewind(),
+		blockV:      blockview.New(),
+		settings:    settings.New(),
 		session:     sess,
 		ghClient:    ghc,
 		vimMode:     vim,
@@ -365,7 +376,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// ── Steal-Esc stack (Grok order) ─────────────
-		// Review → PlanReview → PermAsk → Theme → Resume → Rewind → Palette → File → Command → Slash
+		// Review → PlanReview → PermAsk → BlockView → Settings → Theme → Resume → Rewind → …
 		if m.mode == ModeReview {
 			return m.updateReview(msg)
 		}
@@ -374,6 +385,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.mode == ModePermAsk {
 			return m.updatePermAsk(msg)
+		}
+		if m.mode == ModeBlockView {
+			return m.updateBlockView(msg)
+		}
+		if m.mode == ModeSettings {
+			return m.updateSettings(msg)
 		}
 		if m.mode == ModeThemePick {
 			return m.updateThemePicker(msg)
@@ -588,6 +605,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if c != nil {
 				cmds = append(cmds, c)
 			}
+		case "enter":
+			// Phase 7: fullscreen block viewer
+			m.openBlockViewer()
+			return m, nil
+		case "y":
+			m.copySelectedBlock(false)
+			return m, nil
+		case "Y":
+			m.copySelectedBlock(true)
+			return m, nil
 		default:
 			// Scroll keys: always arrows/pg; letter keys only if vimMode
 			if m.isScrollKey(msg) {
@@ -942,7 +969,7 @@ func isImmediateSlash(cmd string) bool {
 		"/status", "/clear", "/quit", "/theme", "/compact-mode", "/vim-mode",
 		"/sessions", "/resume", "/new", "/fork", "/rewind", "/compact",
 		"/context", "/session-info", "/mode", "/plan", "/view-plan",
-		"/permissions", "/hooks",
+		"/permissions", "/hooks", "/todos", "/tasks", "/settings", "/copy",
 		"/undo", "/push", "/pull":
 		return true
 	default:
@@ -1097,6 +1124,171 @@ func (m *Model) syncWriteMode() {
 
 // legacy alias used by older call sites
 func (m *Model) toggleAgentMode() { m.cycleSessionMode() }
+
+func (m *Model) openBlockViewer() {
+	b := m.chat.store.Selected()
+	if b == nil {
+		m.toast = components.NewToast("No block selected", "info", 2*time.Second)
+		return
+	}
+	m.blockV.Open(blockview.Content{
+		ID: b.ID, Title: b.Title, Body: b.Body, Meta: b.Meta,
+	})
+	m.mode = ModeBlockView
+	m.focusPrompt = false
+	m.chat.BlurInput()
+}
+
+func (m *Model) copySelectedBlock(meta bool) {
+	var text string
+	if meta {
+		text = m.chat.store.SelectedMeta()
+	} else {
+		text = m.chat.store.SelectedBody()
+	}
+	if text == "" {
+		// fallback: last assistant message
+		for i := len(m.chat.messages) - 1; i >= 0; i-- {
+			if m.chat.messages[i].Role == provider.RoleAssistant {
+				text = m.chat.messages[i].Content
+				break
+			}
+		}
+	}
+	if text == "" {
+		m.toast = components.NewToast("Nothing to copy", "warning", 2*time.Second)
+		return
+	}
+	if err := clipboard.Write(text); err != nil {
+		m.chat.AddSystemMessage("Copy: " + err.Error())
+		m.toast = components.NewToast("Copied to file/fallback", "info", 2*time.Second)
+		return
+	}
+	label := "body"
+	if meta {
+		label = "meta"
+	}
+	m.toast = components.NewToast("Copied "+label, "success", 2*time.Second)
+}
+
+func (m Model) updateBlockView(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.blockV.Close()
+		m.mode = ModeNormal
+		m.focusPrompt = false
+		return m, nil
+	case "j", "down":
+		m.blockV.Scroll(1)
+	case "k", "up":
+		m.blockV.Scroll(-1)
+	case "pgdown":
+		m.blockV.Scroll(10)
+	case "pgup":
+		m.blockV.Scroll(-10)
+	case "y":
+		_ = clipboard.Write(m.blockV.Block.Body)
+		m.toast = components.NewToast("Copied body", "success", 2*time.Second)
+	case "Y":
+		meta := fmt.Sprintf("id=%s title=%q meta=%q", m.blockV.Block.ID, m.blockV.Block.Title, m.blockV.Block.Meta)
+		_ = clipboard.Write(meta)
+		m.toast = components.NewToast("Copied meta", "success", 2*time.Second)
+	}
+	return m, nil
+}
+
+func (m *Model) openSettings() {
+	vim := "off"
+	if m.vimMode {
+		vim = "on"
+	}
+	compact := "off"
+	if theme.CompactMode() {
+		compact = "on"
+	}
+	permMode := "default"
+	if m.perm != nil {
+		permMode = string(m.perm.GetMode())
+	}
+	modelName := ""
+	if cur, err := m.providerReg.Current(); err == nil {
+		modelName = cur.Model()
+	}
+	m.settings.Open([]settings.Row{
+		{Key: "theme", Value: theme.Name(), Hint: "Enter → picker"},
+		{Key: "vim_mode", Value: vim, Hint: "toggle"},
+		{Key: "compact_mode", Value: compact, Hint: "toggle"},
+		{Key: "session_mode", Value: m.sessionMode.Label(), Hint: "cycle"},
+		{Key: "permission_mode", Value: permMode, Hint: "cycle"},
+		{Key: "provider", Value: m.providerReg.CurrentName(), Hint: modelName},
+		{Key: "todos", Value: todos.Global.Badge(), Hint: "/todos"},
+		{Key: "bg_tasks", Value: fmt.Sprintf("%d running", bgtask.Global.RunningCount()), Hint: "/tasks"},
+	})
+	m.mode = ModeSettings
+	m.focusPrompt = false
+	m.chat.BlurInput()
+}
+
+func (m Model) updateSettings(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "q":
+		m.settings.Close()
+		m.mode = ModeInsert
+		m.focusPrompt = true
+		m.chat.FocusInput()
+		return m, nil
+	case "up", "k":
+		m.settings.Move(-1)
+	case "down", "j":
+		m.settings.Move(1)
+	case "enter", " ":
+		m.settings.Activate()
+		key := m.settings.Action
+		switch key {
+		case "theme":
+			m.settings.Close()
+			m.openThemePicker()
+			return m, nil
+		case "vim_mode":
+			m.vimMode = !m.vimMode
+		case "compact_mode":
+			theme.ToggleCompact()
+			m.recalcSizes()
+		case "session_mode":
+			m.cycleSessionMode()
+		case "permission_mode":
+			if m.perm != nil {
+				switch m.perm.GetMode() {
+				case permission.ModeDefault:
+					m.perm.SetMode(permission.ModeAlwaysApprove)
+				case permission.ModeAlwaysApprove:
+					m.perm.SetMode(permission.ModeDontAsk)
+				case permission.ModeDontAsk:
+					m.perm.SetMode(permission.ModePlan)
+				default:
+					m.perm.SetMode(permission.ModeDefault)
+				}
+			}
+		case "todos":
+			m.settings.Close()
+			m.chat.AddSystemMessage(todos.Global.Render())
+			m.mode = ModeInsert
+			m.focusPrompt = true
+			m.chat.FocusInput()
+			return m, nil
+		case "bg_tasks":
+			m.settings.Close()
+			m.chat.AddSystemMessage(bgtask.Global.Summary())
+			m.mode = ModeInsert
+			m.focusPrompt = true
+			m.chat.FocusInput()
+			return m, nil
+		}
+		// refresh rows
+		m.openSettings()
+	}
+	return m, nil
+}
 
 func (m Model) updatePermAsk(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	reply := func(allow, always bool) (tea.Model, tea.Cmd) {
@@ -1482,6 +1674,8 @@ func (m *Model) syncStatus() {
 		}
 	}
 	m.status.AgentMode = m.sessionMode.Label()
+	m.status.TodoBadge = todos.Global.Badge()
+	m.status.BgTasks = bgtask.Global.RunningCount()
 	if m.gitRepo != nil {
 		if branch, err := m.gitRepo.Branch(); err == nil {
 			m.status.Branch = branch
@@ -1554,6 +1748,17 @@ func (m Model) View() string {
 			m.status.ViewFooter(),
 		)
 	}
+	// ── Fullscreen block viewer ───────────────────────
+	if m.mode == ModeBlockView {
+		m.blockV.Width = m.width
+		m.blockV.Height = m.height - 1
+		return lipgloss.JoinVertical(lipgloss.Left,
+			m.blockV.View(),
+			m.status.ViewFooter(),
+		)
+	}
+	// ── Settings overlay (composite over main) ────────
+	// rendered with other overlays below
 
 	// ── Main: Grok scrollback (optional side drawers) ─
 	scroll := m.chat.ViewScrollback()
@@ -1585,6 +1790,9 @@ func (m Model) View() string {
 	case ModeThemePick:
 		m.themes.Width = m.width
 		parts = append(parts, m.themes.View())
+	case ModeSettings:
+		m.settings.Width = m.width
+		parts = append(parts, m.settings.View())
 	case ModeSessionPick:
 		m.sessions.Width = m.width
 		m.sessions.Height = m.height
@@ -2079,6 +2287,79 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 			return nil
 		}
 		m.chat.AddSystemMessage(m.hooks.Summary())
+
+	case "todos", "todo":
+		if len(args) == 0 {
+			m.chat.AddSystemMessage(todos.Global.Render())
+			return nil
+		}
+		switch strings.ToLower(args[0]) {
+		case "add":
+			text := strings.Join(args[1:], " ")
+			if text == "" {
+				m.chat.AddSystemMessage("Usage: /todos add <text>")
+				return nil
+			}
+			it := todos.Global.Add(text)
+			m.chat.AddSystemMessage(fmt.Sprintf("Added %s: %s", it.ID, it.Content))
+		case "done", "complete":
+			if len(args) < 2 || !todos.Global.SetStatus(args[1], todos.Completed) {
+				m.chat.AddSystemMessage("Usage: /todos done <id>")
+				return nil
+			}
+			m.chat.AddSystemMessage("Completed " + args[1])
+		case "progress", "start":
+			if len(args) < 2 || !todos.Global.SetStatus(args[1], todos.InProgress) {
+				m.chat.AddSystemMessage("Usage: /todos progress <id>")
+				return nil
+			}
+			m.chat.AddSystemMessage("In progress " + args[1])
+		case "clear":
+			todos.Global.Clear()
+			m.chat.AddSystemMessage("Todos cleared")
+		default:
+			m.chat.AddSystemMessage("Usage: /todos [add|done|progress|clear]")
+		}
+
+	case "tasks", "bg":
+		if len(args) == 0 {
+			m.chat.AddSystemMessage(bgtask.Global.Summary())
+			return nil
+		}
+		switch strings.ToLower(args[0]) {
+		case "cancel", "kill", "stop":
+			if len(args) < 2 {
+				m.chat.AddSystemMessage("Usage: /tasks cancel <id>")
+				return nil
+			}
+			if err := bgtask.Global.Cancel(args[1]); err != nil {
+				m.chat.AddSystemMessage("⚠ " + err.Error())
+			} else {
+				m.chat.AddSystemMessage("Cancelled " + args[1])
+				m.toast = components.NewToast("Task cancelled", "info", 2*time.Second)
+			}
+		case "show", "view", "log":
+			if len(args) < 2 {
+				m.chat.AddSystemMessage("Usage: /tasks show <id>")
+				return nil
+			}
+			t, ok := bgtask.Global.Get(args[1])
+			if !ok {
+				m.chat.AddSystemMessage("Task not found")
+				return nil
+			}
+			m.chat.AddSystemMessage(fmt.Sprintf("[%s] %s\n%s\n\n%s", t.Status, t.ID, t.Command, t.Output))
+		default:
+			m.chat.AddSystemMessage(bgtask.Global.Summary())
+		}
+
+	case "settings", "config":
+		m.openSettings()
+
+	case "copy":
+		// /copy [meta]
+		meta := len(args) > 0 && (args[0] == "meta" || args[0] == "Y")
+		m.copySelectedBlock(meta)
 
 	case "sessions", "dashboard":
 		// list text view (picker is /resume)
@@ -3040,6 +3321,7 @@ var slashCommands = []string{
 	"/theme", "/compact-mode", "/vim-mode",
 	"/resume", "/new", "/fork", "/rewind", "/compact", "/context", "/session-info",
 	"/mode", "/plan", "/view-plan", "/permissions", "/hooks",
+	"/todos", "/tasks", "/settings", "/copy",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
 
@@ -3053,34 +3335,31 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge · Grok-parity Phase 6  ·  v0.9.5
+	return `CodeForge · Grok-parity Phase 7  ·  v0.9.6
 
-FOCUS
-  Tab · Esc · 2×Esc · Shift+Tab (BUILD/DESIGN/YOLO)
+SCROLLBACK
+  Enter          Fullscreen block viewer
+  y / Y          Copy block body / metadata
+  j/k h/l e/E    Navigate · fold (vim mode for letters)
 
-PERMISSIONS
-  Order: hooks → deny → ask → allow → remember → defaults
-  /permissions           Show mode & rules
-  /permissions deny run_command "rm *"
-  /permissions allow run_command "go test *"
-  /permissions mode dont_ask|always_approve|default
-  y/n/a/d                On ask modal (always remember)
-  /hooks                 List Pre/PostToolUse hooks
+PRODUCT
+  /todos         Task list · footer ☑ 2/5
+  /tasks         Background shell jobs · cancel
+  /settings      Appearance & modes panel
+  /copy          Copy selected / last assistant
+  /plan /resume /theme /permissions /hooks
 
-SESSION / PLAN
-  /plan /view-plan /resume /new /fork /rewind /compact
-
-THEME
-  /theme · /compact-mode · --minimal
+SESSION MODES
+  Shift+Tab      BUILD → DESIGN → YOLO
 `
 }
 
 func aboutText() string {
-	return `CodeForge TUI v0.9.5
+	return `CodeForge TUI v0.9.6
 Created by NanoMind — 2026 — Apache 2.0
 
-Phase 1–5: blocks, input, themes, sessions, design plan
-Phase 6: permissions (allow/deny/ask) + hooks + remember
+Phase 1–6: blocks, input, themes, sessions, plan, permissions
+Phase 7: todos · thinking/diff blocks · viewer · copy · /tasks
 See docs/GROK_PARITY_ROADMAP.md
 `
 }

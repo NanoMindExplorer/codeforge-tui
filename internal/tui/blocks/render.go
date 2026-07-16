@@ -275,6 +275,18 @@ func (s *Store) blockHeader(b Block) string {
 	switch b.Kind {
 	case KindUser:
 		return fold + "you"
+	case KindDiff:
+		m := b.Meta
+		if m != "" {
+			m = " " + m
+		}
+		return fold + "▤ " + b.Title + m
+	case KindThinking:
+		stream := ""
+		if b.Streaming {
+			stream = " …"
+		}
+		return fold + "💭 thinking" + stream
 	case KindAssistant:
 		stream := ""
 		if b.Streaming {
@@ -288,14 +300,6 @@ func (s *Store) blockHeader(b Block) string {
 		return fold + icon + " " + b.Title
 	case KindToolResult:
 		return fold + b.Title
-	case KindDiff:
-		meta := b.Meta
-		if meta != "" {
-			meta = "  " + meta
-		}
-		return fold + "diff " + b.Title + meta
-	case KindThinking:
-		return fold + "thinking…"
 	default:
 		return fold + b.Title
 	}
@@ -377,23 +381,4 @@ func (s *Store) DebugString() string {
 	return b.String()
 }
 
-func kindName(k Kind) string {
-	switch k {
-	case KindUser:
-		return "user"
-	case KindAssistant:
-		return "asst"
-	case KindSystem:
-		return "sys"
-	case KindToolCall:
-		return "tool"
-	case KindToolResult:
-		return "tres"
-	case KindDiff:
-		return "diff"
-	case KindThinking:
-		return "think"
-	default:
-		return "?"
-	}
-}
+// kindName for DebugString — defined in block.go

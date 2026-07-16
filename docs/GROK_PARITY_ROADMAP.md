@@ -2,10 +2,10 @@
 
 **Goal:** Make CodeForge feel and behave **1:1** with Grok Build TUI (Grok 4.5 class) in layout, interaction, session lifecycle, permissions, and agent surface — without becoming a closed fork of proprietary code.
 
-**Current baseline:** CodeForge **v0.9.5**  
-- Phase 1–6 shipped: blocks, input, themes, sessions, design plan, permissions/hooks  
+**Current baseline:** CodeForge **v0.9.6**  
+- Phase 1–7 shipped: blocks, input, themes, sessions, plan, permissions, product surface  
 - GitHub, plugins, headless agent, rules, index, MCP  
-- **Not** full Grok parity yet (ACP, OS sandbox, full slash/TODO surface, …)
+- **Not** full Grok parity yet (ACP, OS sandbox, …)
 
 **Reference:** Grok user-guide docs (`~/.grok/docs/user-guide/`) — theming, shortcuts, sessions, plan mode, permissions, agent ACP.
 
@@ -39,7 +39,7 @@ Phases are **sequential** where later ones depend on earlier UI foundations. Som
 | Sessions | UUID dirs, resume picker, fork, rewind, compact | ✅ Phase 4 v2 layout | Small |
 | Plan mode | Read-only plan.md + approval UI | ✅ Phase 5 DESIGN/BUILD/YOLO | Small |
 | Permissions | allow/deny/ask + modes + hooks | ✅ Phase 6 | Small |
-| TODOs | Task badges in footer | None | Medium |
+| TODOs | Task badges in footer | ✅ Phase 7 | — |
 | Thinking | Animated reasoning blocks | Spinner only | Medium |
 | ACP / IDE | `grok agent stdio` / serve | Headless `agent --json` only | **Large** |
 | Sandbox | OS sandbox for shell | Path sandbox only | Large |
@@ -243,8 +243,11 @@ Team (or you) can answer “done for v1.0 Grok-parity” with a yes/no checklist
 8. Align headless flags with Grok: `--always-approve`, `--model`
 
 ### Exit criteria
-- [ ] Slash menu covers ≥90% of Grok’s daily commands  
-- [ ] Diff appears inline under tool write like Grok  
+- [x] Slash menu covers ≥90% of Grok’s daily commands  
+- [x] Diff appears inline under tool write like Grok  
+
+**Shipped in v0.9.6** — `/todos` `/tasks` `/settings` `/copy`, thinking + inline
+diff blocks, Enter viewer, y/Y copy, bg shell, `--model`.
 
 ---
 

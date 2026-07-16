@@ -213,20 +213,120 @@ func (s *Store) AddToolProgress(text string) {
 	s.AddSystem("⋯ " + text)
 }
 
-// AddDiff appends a foldable diff block.
+// AddDiff appends a foldable diff block (inline under tool writes).
 func (s *Store) AddDiff(title, diffText, meta string) {
+	if meta == "" {
+		meta = DiffMeta(diffText)
+	}
+	// default collapse very large diffs
+	collapsed := strings.Count(diffText, "\n") > 40
 	s.append(Block{
 		ID: s.nextID("diff"), TurnID: s.turnID, Kind: KindDiff,
-		Title: title, Body: diffText, Meta: meta, Foldable: true, Collapsed: false,
+		Title: title, Body: diffText, Meta: meta, Foldable: true, Collapsed: collapsed,
 	})
 }
 
-// AddThinking stub reasoning block.
+// AddThinking opens a reasoning block (synthetic "planning…" or provider text).
 func (s *Store) AddThinking(text string) {
+	// if last is streaming thinking, append
+	if n := len(s.blocks); n > 0 && s.blocks[n-1].Kind == KindThinking && s.blocks[n-1].Streaming {
+		if text != "" {
+			s.blocks[n-1].Body += text
+		}
+		if s.follow {
+			s.scrollToEnd()
+		}
+		return
+	}
 	s.append(Block{
 		ID: s.nextID("think"), TurnID: s.turnID, Kind: KindThinking,
 		Title: "thinking", Body: text, Foldable: true, Collapsed: false, Streaming: true,
 	})
+}
+
+// SealThinking marks thinking block complete (and collapses if long).
+func (s *Store) SealThinking() {
+	for i := len(s.blocks) - 1; i >= 0; i-- {
+		if s.blocks[i].Kind == KindThinking && s.blocks[i].Streaming {
+			s.blocks[i].Streaming = false
+			if len(s.blocks[i].Body) > 200 {
+				s.blocks[i].Collapsed = true
+			}
+			return
+		}
+	}
+}
+
+// Selected returns the selected block or nil.
+func (s *Store) Selected() *Block {
+	if s.selected < 0 || s.selected >= len(s.blocks) {
+		return nil
+	}
+	b := s.blocks[s.selected]
+	return &b
+}
+
+// SelectedBody returns body of selected block for copy/viewer.
+func (s *Store) SelectedBody() string {
+	b := s.Selected()
+	if b == nil {
+		return ""
+	}
+	return b.Body
+}
+
+// SelectedMeta returns a one-line metadata summary for copy.
+func (s *Store) SelectedMeta() string {
+	b := s.Selected()
+	if b == nil {
+		return ""
+	}
+	return fmt.Sprintf("kind=%s id=%s turn=%s title=%q meta=%q bytes=%d",
+		kindName(b.Kind), b.ID, b.TurnID, b.Title, b.Meta, len(b.Body))
+}
+
+func kindName(k Kind) string {
+	switch k {
+	case KindUser:
+		return "user"
+	case KindAssistant:
+		return "assistant"
+	case KindSystem:
+		return "system"
+	case KindToolCall:
+		return "tool_call"
+	case KindToolResult:
+		return "tool_result"
+	case KindDiff:
+		return "diff"
+	case KindThinking:
+		return "thinking"
+	default:
+		return "?"
+	}
+}
+
+// DiffMeta computes +N/-M from a unified diff.
+func DiffMeta(diffText string) string {
+	add, del := 0, 0
+	for _, line := range strings.Split(diffText, "\n") {
+		if len(line) == 0 {
+			continue
+		}
+		if strings.HasPrefix(line, "+++") || strings.HasPrefix(line, "---") || strings.HasPrefix(line, "@@") {
+			continue
+		}
+		switch line[0] {
+		case '+':
+			add++
+		case '-':
+			del++
+		}
+	}
+	if add == 0 && del == 0 {
+		return ""
+	}
+	return fmt.Sprintf("+%d -%d", add, del)
 }
 
 func (s *Store) append(b Block) {

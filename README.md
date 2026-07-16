@@ -46,7 +46,7 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 | Area | What you get |
 |------|----------------|
-| **TUI** | 3-pane layout: **Chat** · **Diff** · **Files**. Below ~100 columns, switches to a single-pane tab mode (keys `1` / `2` / `3`). |
+| **TUI** | **Grok 4.5–style**: full-width scrollback + bottom `❯` prompt · GrokNight theme · optional Diff/Files drawers (`Ctrl+B`). |
 | **Streaming chat** | Real-time token stream; assistant replies rendered as **Markdown** with **syntax-highlighted** code (Glamour). |
 | **Agent loop** | Tool-calling agent: `read_file`, `write_file`, `list_dir`, `grep_search`, `run_command` (sandboxed to project root). |
 | **Trust layer** | **Plan mode (default):** writes are staged → multi-file **review** before disk. **Act mode:** writes apply immediately. |
@@ -227,60 +227,64 @@ codeforge /path/to/your/project
 codeforge --skip-wizard --no-motion
 ```
 
-**First 60 seconds inside the TUI:**
+**First 60 seconds inside the TUI (Grok simple mode):**
 
-1. Press **`i`** → INSERT mode (chat input).
-2. Type a question → **Enter** → stream a normal chat answer.
-3. Press **Esc** → NORMAL mode.
-4. Press **`I`** (or type `/act …`) → agent mode with tools.
-5. Press **`?`** anytime for in-app help.
+1. **Just type** — prompt is focused by default (`❯`).
+2. Press **Enter** → stream a chat answer into the scrollback.
+3. Type **`/act fix tests`** → agent with tools.
+4. **`@`** → attach a file; **`Ctrl+K`** → palette; **`Shift+Tab`** → Plan/Act.
+5. Press **`?`** anytime for help.
 
 ---
 
 ## User guide
 
-### Interface layout
+### Interface (Grok 4.5–style)
 
 ```
- ⚡ CodeForge   NORMAL   PLAN   gemini · flash   git:main   ▁▂▃▅   $0.01   ?=help
+┃ you
+┃ fix the race in worker.go
 
-╭─ Chat ─────────────────────────╮╭─ Diff  +12 -3 ────╮╭─ Files ────╮
-│  ▶ fix the race in worker.go  ││  worker.go         ││  ● main.go │
-│  ⠋ Agent …                     ││  12  - old        ││  ◆ agent.go│
-│    📖 read_file worker.go      ││  12  + new        ││             │
-│    ✓ 84 lines                  ││                   ││ Tools       │
-│  » _                           ││                   ││  read_file  │
-╰────────────────────────────────╯╰───────────────────╯╰─────────────╯
-  i:chat  I:/act  ⌘K:palette  @:file  Tab:pane  Shift+P:plan/act        14:02
+┃ ⠋ working
+┃ ◆ read_file  worker.go
+┃   ✓ 84 lines
+┃ Here's the race: …
+
+╭─ ❯ ask anything, /command, or @file ─────────────────╮
+│ ▌                                                     │
+╰───────────────────────────────────────────────────────╯
+ PROMPT  PLAN  gemini · flash  gh:@you · main  $0.01  groknight  14:02
+ tab focus  @ file  / commands  ctrl+k  shift+tab plan/act  ctrl+b panels
 ```
 
-| Pane | Role |
-|------|------|
-| **Chat** | Messages, tool timeline, multi-line input |
-| **Diff** | Staged or applied file changes |
-| **Files** | Project files + tools list; highlights files the agent touched |
+| Region | Role |
+|--------|------|
+| **Scrollback** | Full-width blocks with left accent bars (you / assistant / tools) |
+| **Prompt** | Bottom `❯` composer — focused by default |
+| **Footer** | PROMPT/SCROLL · PLAN/ACT · model · git/gh · cost · theme |
+| **Panels** | Optional Diff + Files (`Ctrl+B`) |
 
-On narrow terminals (&lt; ~100 columns), only the focused pane is shown full-width. Switch with **`1`** Chat · **`2`** Diff · **`3`** Files.
+### Focus & keys
 
-### Modes
-
-| Mode | How to enter | Purpose |
-|------|----------------|---------|
-| **NORMAL** | Default; **Esc** | Navigate panes, scroll, open palette, toggle Plan/Act |
-| **INSERT** | **`i`**, **`/`**, **`I`** | Type chat or slash commands; multi-line textarea |
-| **COMMAND** | **`:`** | Classic command line (slash-style actions) |
-| **PALETTE** | **Ctrl+K** | Fuzzy search over commands, files, sessions |
-| **FILE PICK** | **`@`** in INSERT | Fuzzy file picker for mentions |
-| **REVIEW** | After agent turn in Plan with pending writes | Accept/reject staged patches |
-
-Status bar badges show UI mode (**NORMAL** / **INSERT** / …) and agent write mode (**PLAN** / **ACT**).
+| Key | Action |
+|-----|--------|
+| *(type)* | Auto-focus prompt |
+| `Tab` | Prompt ↔ scrollback |
+| `Esc` / **2× Esc** | Scrollback / clear prompt |
+| `@` | File picker |
+| `/` | Slash commands (+ hint strip) |
+| `Ctrl+K` | Palette |
+| `Shift+Tab` | Plan ↔ Act |
+| `Ctrl+B` | Toggle side panels |
+| `/theme` | Cycle GrokNight · Aurora · TokyoNight · GrokDay |
+| `/compact-mode` | Tighter padding |
 
 ### Chat vs agent
 
 | Path | How | Tools? | Best for |
 |------|-----|--------|----------|
-| **Streaming chat** | INSERT → type natural language → Enter | No | Q&A, explanations, design discussion |
-| **Agent** | `/act <task>` or shortcuts `/read`, `/fix`, … | Yes | Edit code, search repo, run builds/tests |
+| **Streaming chat** | Type natural language → Enter | No | Q&A, explanations |
+| **Agent** | `/act <task>` or `/read`, `/fix`, … | Yes | Edit code, search, builds |
 
 Agent system behavior (summary):
 

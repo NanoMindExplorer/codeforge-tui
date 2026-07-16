@@ -17,6 +17,7 @@ import (
 	"github.com/codeforge/tui/internal/acp"
 	"github.com/codeforge/tui/internal/app"
 	"github.com/codeforge/tui/internal/config"
+	"github.com/codeforge/tui/internal/doctor"
 	"github.com/codeforge/tui/internal/headless"
 	"github.com/codeforge/tui/internal/onboarding"
 	"github.com/codeforge/tui/internal/session"
@@ -26,7 +27,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "1.8.4"
+	ProjectVersion = "1.9.0"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -44,6 +45,8 @@ func main() {
 		os.Exit(runAgentCLI(args[1:]))
 	case "session":
 		os.Exit(runSessionCLI(args[1:]))
+	case "doctor":
+		os.Exit(runDoctorCLI())
 	case "version", "--version", "-v":
 		fmt.Printf("codeforge %s\n", ProjectVersion)
 	case "help", "--help", "-h":
@@ -52,6 +55,25 @@ func main() {
 		// flags or workdir → TUI
 		runTUI(args)
 	}
+}
+
+func runDoctorCLI() int {
+	workdir, _ := os.Getwd()
+	rt, err := app.Bootstrap(app.Options{WorkDir: workdir, Quiet: true, SkipIndex: true, SkipMCP: true, SkipPlugins: true})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "boot: %v\n", err)
+		return 1
+	}
+	rep := doctor.Run(doctor.Options{
+		Registry: rt.ProvReg,
+		WorkDir:  workdir,
+		Version:  ProjectVersion,
+	})
+	fmt.Println(rep.String())
+	if !rep.OK {
+		return 1
+	}
+	return 0
 }
 
 func runTUI(args []string) {
@@ -413,6 +435,7 @@ Usage:
   codeforge agent stdio                 ACP JSON-RPC for IDEs
   codeforge agent serve                 ACP WebSocket server
   codeforge session <cmd>               Export / import sessions
+  codeforge doctor                      Health check (keys, color, sandbox)
   codeforge version
 
 TUI flags:

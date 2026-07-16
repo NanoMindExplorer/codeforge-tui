@@ -2,7 +2,23 @@
 
 All notable changes to CodeForge are documented here.
 
-Generate a release blurb: `make release-notes` or `bash scripts/release-notes.sh`.
+Generate a release blurb: `make release-notes` or `bash scripts/release-notes.sh`.  
+Automated readiness: `make release-gate` (see [docs/RELEASE_GATE.md](./docs/RELEASE_GATE.md)).
+
+## [1.9.0] — 2026-07-16
+
+### Public-ready gate (W4)
+
+- `docs/RELEASE_GATE.md` — automated + human gate checklist for public release.
+- `make release-gate` / `scripts/release-gate.sh` — version, tests, packaging, headless contract, smoke-matrix.
+- `make smoke-matrix` — Batch F env/color smoke (`CODEFORGE_COLOR`, `NO_COLOR`, SSH tune, …).
+- Dogfood **Batch F** + **parity scorecard** templates.
+- **`codeforge doctor`** + **`/doctor`** — keys, model, color level, sandbox, hints (E7).
+- Roadmap baseline + honest limitations updated for v1.9.0.
+
+### Shipped foundations (W1–W3 recap)
+
+- Release automation, ProviderError UX, onboarding wizard/`/setup`, packaging matrix, Termux metadata.
 
 ## [1.8.4] — 2026-07-16
 

@@ -8,7 +8,7 @@
 | From source | `make build` | matches `VERSION` |
 | Termux | `bash contrib/termux/build.sh` | `codeforge version` |
 | Homebrew | `Formula/codeforge.rb` or tap after release | `codeforge version` |
-| Pin release | `CODEFORGE_VERSION=v1.8.4 sh install.sh` | tag match |
+| Pin release | `CODEFORGE_VERSION=v1.9.0 sh install.sh` | tag match |
 
 ## One-liner
 

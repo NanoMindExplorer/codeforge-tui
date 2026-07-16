@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
-[![Version](https://img.shields.io/badge/version-v1.8.4-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
+[![Version](https://img.shields.io/badge/version-v1.9.0-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v1.8.4` |
+| **Version** | `v1.9.0` |
 
 CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
@@ -20,15 +20,15 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 ## Grok 4.5 parity
 
-CodeForge **v1.8.4** is a **Grok Build TUI–compatible** coding agent with **Grok 4.5** (xAI) as a first-class model, full Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …), plus ACP for IDEs.
+CodeForge **v1.9.0** is a **Grok Build TUI–compatible** coding agent with **Grok 4.5** (xAI) as a first-class model, full Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …), plus ACP for IDEs.
 
 → Roadmap: **[docs/GROK_PARITY_ROADMAP.md](./docs/GROK_PARITY_ROADMAP.md)** · Dogfood: **[docs/DOGFOOD.md](./docs/DOGFOOD.md)** · ACP: **[docs/ACP.md](./docs/ACP.md)** · Reasoning: **[docs/REASONING.md](./docs/REASONING.md)** · Pager: **[docs/PAGER.md](./docs/PAGER.md)** · Skills: **[docs/SKILLS.md](./docs/SKILLS.md)** · Subagents: **[docs/SUBAGENTS.md](./docs/SUBAGENTS.md)**
 
 ### Honest remaining gaps (Could)
 
 - Restricted environments without Landlock (process=none) — soft+bwrap still apply · [docs/SANDBOX.md](./docs/SANDBOX.md)  
-- Niche Grok-only UX (billing OAuth, full pager.toml)  
-- Pixel-perfect `pager.toml` matrix
+- Niche Grok-only UX (billing OAuth)  
+- Field dogfood scores are maintainer-owned (see [docs/RELEASE_GATE.md](./docs/RELEASE_GATE.md))
 
 ## Table of contents
 
@@ -111,7 +111,7 @@ CodeForge **v1.8.4** is a **Grok Build TUI–compatible** coding agent with **Gr
 | **Go** | `go install github.com/NanoMindExplorer/codeforge/cmd/codeforge@latest` | `codeforge version` |
 | **Windows** | GitHub Release `windows_amd64.zip` or WSL + install.sh | `codeforge version` |
 
-Pin a release: `CODEFORGE_VERSION=v1.8.4 sh install.sh`
+Pin a release: `CODEFORGE_VERSION=v1.9.0 sh install.sh`
 
 ### One-line installer
 
@@ -958,8 +958,9 @@ Local gates:
 
 ```bash
 make ci                 # check-version + vet + test + build
-make bump V=1.8.3       # bump VERSION + all string locations
-bash scripts/update-formula.sh v1.8.2   # after release: fill Formula sha256
+make bump V=1.9.1       # bump VERSION + all string locations
+bash scripts/update-formula.sh v1.9.0   # after release: fill Formula sha256
+make release-gate       # automated public-ready checks
 ```
 
 ---

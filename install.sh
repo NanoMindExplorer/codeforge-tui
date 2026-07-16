@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # CodeForge one-line installer
 #   curl -fsSL https://raw.githubusercontent.com/NanoMindExplorer/codeforge/main/install.sh | sh
-#   CODEFORGE_VERSION=v1.8.4 sh install.sh
+#   CODEFORGE_VERSION=v1.9.0 sh install.sh
 #   CODEFORGE_PLAIN=1 sh install.sh   # prefer plain (no glamour) asset when present
 set -e
 

@@ -76,7 +76,7 @@ func ConnectMCP(cfg MCPServerConfig) (*MCPClient, error) {
 	_, err = c.request(context.Background(), "initialize", map[string]any{
 		"protocolVersion": "2024-11-05",
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "codeforge", "version": "1.8.4"},
+		"clientInfo":      map[string]any{"name": "codeforge", "version": "1.9.0"},
 	})
 	if err != nil {
 		_ = c.Close()

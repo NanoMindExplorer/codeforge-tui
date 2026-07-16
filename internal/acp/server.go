@@ -89,7 +89,7 @@ type acpSession struct {
 // NewServer creates an ACP server (transport set via SetTransport).
 func NewServer(opt Options) *Server {
 	if opt.Version == "" {
-		opt.Version = "1.8.4"
+		opt.Version = "1.9.0"
 	}
 	if opt.MaxIter <= 0 {
 		opt.MaxIter = 12

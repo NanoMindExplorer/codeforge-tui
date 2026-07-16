@@ -21,18 +21,25 @@
 | 16 | basic ANSI | GrokNight/Day/Aurora preferred; truecolor-only themes hidden in `/theme` picker |
 | none | `NO_COLOR` or `CODEFORGE_COLOR=none` | Minimal / monochrome |
 
+## Automated smoke (Batch F)
+
+```bash
+make smoke-matrix
+```
+
+Manual dogfood sheet: [dogfood/BATCH_F.md](./dogfood/BATCH_F.md). Health dump: `codeforge doctor` or `/doctor`.
+
 ## Termux install (summary)
 
 ```bash
 pkg install -y golang git
 git clone https://github.com/NanoMindExplorer/codeforge.git && cd codeforge
-CGO_ENABLED=0 go build -ldflags="-s -w" -o codeforge ./cmd/codeforge/
-cp codeforge $PREFIX/bin/
-export GEMINI_API_KEY=…
+bash contrib/termux/build.sh
+export XAI_API_KEY=…   # or GEMINI_API_KEY
 codeforge --no-motion --compact
 ```
 
-See also [INSTALL.md](../INSTALL.md) and [contrib/termux-package.md](../contrib/termux-package.md).
+See also [INSTALL.md](../INSTALL.md) and [contrib/termux/README.md](../contrib/termux/README.md).
 
 ## Build matrix (release)
 

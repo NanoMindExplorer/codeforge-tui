@@ -16,6 +16,7 @@ import (
 	"github.com/codeforge/tui/internal/bgtask"
 	"github.com/codeforge/tui/internal/checkpoint"
 	"github.com/codeforge/tui/internal/config"
+	"github.com/codeforge/tui/internal/doctor"
 	"github.com/codeforge/tui/internal/git"
 	gh "github.com/codeforge/tui/internal/github"
 	"github.com/codeforge/tui/internal/hooks"
@@ -2222,6 +2223,20 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 	case "about":
 		m.chat.AddSystemMessage(aboutText())
 
+	case "doctor":
+		ver := tuiAboutVersion()
+		rep := doctor.Run(doctor.Options{
+			Registry: m.providerReg,
+			WorkDir:  m.workdir,
+			Version:  ver,
+		})
+		m.chat.AddSystemMessage(rep.String())
+		if !rep.OK {
+			m.toast = components.NewToast(fmt.Sprintf("doctor: %d issue(s)", rep.Issues), "error", 3*time.Second)
+		} else {
+			m.toast = components.NewToast("doctor OK", "success", 2*time.Second)
+		}
+
 	case "provider", "p":
 		if len(args) == 0 {
 			var sb strings.Builder
@@ -3699,7 +3714,7 @@ func modeString(m Mode) string {
 var slashCommands = []string{
 	"/act", "/read", "/ls", "/grep", "/run", "/explain", "/fix",
 	"/status", "/commit", "/push", "/pull", "/pr", "/issue", "/gh",
-	"/provider", "/setup", "/model", "/mode", "/cost", "/budget", "/rules", "/index",
+	"/provider", "/setup", "/doctor", "/model", "/mode", "/cost", "/budget", "/rules", "/index",
 	"/theme", "/compact-mode", "/vim-mode",
 	"/resume", "/new", "/rename", "/fork", "/rewind", "/compact", "/context", "/session-info",
 	"/mode", "/plan", "/view-plan", "/permissions", "/sandbox", "/pager", "/hooks",
@@ -3726,7 +3741,7 @@ MODES
   Shift+Tab      BUILD → DESIGN → YOLO
 
 PRODUCT
-  /setup /provider /model · key sources shown on /provider
+  /setup /provider /doctor /model · key sources on /provider
   /resume /new /fork /rewind /compact /context
   /plan /todos /tasks /subagents /memory /skills /personas /settings
   /theme /permissions /sandbox /hooks /vim-mode /compact-mode
@@ -3739,16 +3754,30 @@ AGENT / IDE
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.8.4
+	return `CodeForge TUI v1.9.0
 Created by NanoMind — 2026 — Apache 2.0
 
-Grok Build TUI–compatible (Phases 1–9 + G1–G10):
+Grok Build TUI–compatible (Phases 1–9 + G1–G10 + W1–W4):
   blocks · input · themes · sessions · design plan
   permissions/hooks · todos/tasks · ACP + x.ai/* extensions
   Grok 4.5 · native thinking · Landlock · skills · personas
-  pager.toml · subagent auth · Grok shell alias policy
-See docs/PAGER.md · docs/REASONING.md · docs/ACP.md
+  pager.toml · /setup · /doctor · release gate
+See docs/PAGER.md · docs/REASONING.md · docs/RELEASE_GATE.md
 `
+}
+
+// tuiAboutVersion extracts X.Y.Z from aboutText first line.
+func tuiAboutVersion() string {
+	lines := strings.Split(aboutText(), "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	for _, w := range strings.Fields(lines[0]) {
+		if strings.HasPrefix(w, "v") && strings.Count(w, ".") >= 2 {
+			return strings.TrimPrefix(w, "v")
+		}
+	}
+	return ""
 }
 
 func min(a, b int) int {

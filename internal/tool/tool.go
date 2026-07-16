@@ -15,7 +15,7 @@ import (
     "time"
 
     "github.com/codeforge/tui/internal/diff"
-    "github.com/codeforge/tui/internal/secrets"
+    "github.com/codeforge/tui/internal/redact"
     "github.com/codeforge/tui/internal/workspace"
 )
 
@@ -89,7 +89,7 @@ func (f *FileReader) Execute(input json.RawMessage) Result {
         return Result{Error: fmt.Sprintf("read: %v", err)}
     }
     // Secret redaction before model sees content
-    out, blocked := secrets.RedactFile(filepath.Base(path), string(data))
+    out, blocked := redact.RedactFile(filepath.Base(path), string(data))
     if blocked {
         return Result{Success: true, Output: out}
     }
@@ -409,7 +409,7 @@ func (s *ShellExec) Execute(input json.RawMessage) Result {
     cmd.Stderr = &outBuf
     runErr := cmd.Run()
 
-    output := secrets.Redact(outBuf.String())
+    output := redact.Redact(outBuf.String())
     if len(output) > shellMaxOutput {
         output = output[:shellMaxOutput] + "\n... (output truncated)"
     }

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/codeforge/tui/internal/secrets"
+	"github.com/codeforge/tui/internal/redact"
 )
 
 // URLFetch safely fetches public HTTP(S) documentation for the agent.
@@ -120,7 +120,7 @@ func (u *URLFetch) Execute(input json.RawMessage) Result {
 	if strings.Contains(ct, "html") || strings.HasPrefix(strings.TrimSpace(text), "<!DOCTYPE") || strings.HasPrefix(strings.TrimSpace(text), "<html") {
 		text = stripHTML(text)
 	}
-	text = secrets.Redact(text)
+	text = redact.Redact(text)
 	if truncated {
 		text += "\n… (truncated)"
 	}

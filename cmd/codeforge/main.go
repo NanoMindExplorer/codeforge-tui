@@ -14,7 +14,10 @@ import (
 
 	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/git"
+	"github.com/codeforge/tui/internal/index"
 	"github.com/codeforge/tui/internal/provider"
+	"github.com/codeforge/tui/internal/research"
+	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/codeforge/tui/internal/tool"
 	"github.com/codeforge/tui/internal/tui"
@@ -23,7 +26,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "0.5.0"
+	ProjectVersion = "0.6.0"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -114,14 +117,49 @@ func main() {
 	}
 	workspace.SetGlobal(ws)
 
+	// Project rules (AGENTS.md, …)
+	var extra []string
+	for _, r := range ws.ListRoots() {
+		if r.Path != workdir {
+			extra = append(extra, r.Path)
+		}
+	}
+	rb := rules.Load(workdir, extra...)
+	if len(rb.Paths) > 0 {
+		fmt.Fprintf(os.Stderr, "✓ %s\n", rb.Summary())
+	}
+
+	// Offline codebase index (background-friendly sync build)
+	if idx, err := index.Build(workdir); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: index: %v\n", err)
+	} else {
+		index.SetGlobal(idx)
+		f, s := idx.Stats()
+		fmt.Fprintf(os.Stderr, "✓ Codebase index: %d files, %d symbols\n", f, s)
+	}
+
 	toolReg := tool.NewRegistry(workdir)
-	if cfg.Permissions.RequireConfirmWrite {
+	toolReg.Register(&research.Tool{WorkDir: workdir, Parent: toolReg, ProvReg: provReg})
+		if cfg.Permissions.RequireConfirmWrite {
 		if sw := toolReg.GetStagedWriter(); sw != nil {
 			sw.SetMode(tool.ModePlan)
 		}
 	} else {
 		if sw := toolReg.GetStagedWriter(); sw != nil {
 			sw.SetMode(tool.ModeAct)
+		}
+	}
+
+	// MCP servers from config
+	if len(cfg.MCP.Servers) > 0 {
+		var servers []provider.MCPServerConfig
+		for _, s := range cfg.MCP.Servers {
+			servers = append(servers, provider.MCPServerConfig{
+				Name: s.Name, Command: s.Command, Args: s.Args, Env: s.Env,
+			})
+		}
+		for _, line := range tool.RegisterMCPServers(toolReg, servers) {
+			fmt.Fprintf(os.Stderr, "✓ %s\n", line)
 		}
 	}
 
@@ -136,6 +174,10 @@ func main() {
 			fmt.Fprintf(os.Stderr, "   Gemini free: https://aistudio.google.com/apikey\n")
 			fmt.Fprintf(os.Stderr, "   export GEMINI_API_KEY=...\n\n")
 		}
+	}
+
+	if cfg.Budget.MaxCostUSD > 0 {
+		fmt.Fprintf(os.Stderr, "✓ Budget cap: $%.2f\n", cfg.Budget.MaxCostUSD)
 	}
 
 	model := tui.New(cfg, provReg, toolReg, repo, workdir)
@@ -239,8 +281,8 @@ func printBanner() {
 	fmt.Printf(`
 ╔══════════════════════════════════════════════════════════════╗
 ║   CodeForge TUI v%s  |  by %s  |  %s                 ║
-║   Terminal Glass · Plan/Act · GitHub · Multi-Provider        ║
-║   Gemini · Claude · OpenAI · Ollama · gh / GITHUB_TOKEN      ║
+║   Tier-2 · Rules · Index · MCP · Research · Budget           ║
+║   Gemini · Claude · OpenAI · Ollama · GitHub                 ║
 ╚══════════════════════════════════════════════════════════════╝
 `, ProjectVersion, ProjectAuthor, ProjectYear)
 }

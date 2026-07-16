@@ -15,6 +15,7 @@ import (
     "time"
 
     "github.com/codeforge/tui/internal/diff"
+    "github.com/codeforge/tui/internal/secrets"
     "github.com/codeforge/tui/internal/workspace"
 )
 
@@ -87,7 +88,15 @@ func (f *FileReader) Execute(input json.RawMessage) Result {
     if err != nil {
         return Result{Error: fmt.Sprintf("read: %v", err)}
     }
-    return Result{Success: true, Output: string(data)}
+    // Secret redaction before model sees content
+    out, blocked := secrets.RedactFile(filepath.Base(path), string(data))
+    if blocked {
+        return Result{Success: true, Output: out}
+    }
+    if len(out) > 100_000 {
+        out = out[:100_000] + "\n… (truncated)"
+    }
+    return Result{Success: true, Output: out}
 }
 
 // ---------------------------------------------------------------------
@@ -400,7 +409,7 @@ func (s *ShellExec) Execute(input json.RawMessage) Result {
     cmd.Stderr = &outBuf
     runErr := cmd.Run()
 
-    output := outBuf.String()
+    output := secrets.Redact(outBuf.String())
     if len(output) > shellMaxOutput {
         output = output[:shellMaxOutput] + "\n... (output truncated)"
     }
@@ -434,11 +443,15 @@ func NewRegistry(workDir string) *Registry {
     r.Register(&ApplyPatch{WorkDir: workDir, Staged: staged})
     r.Register(&DirLister{WorkDir: workDir})
     r.Register(&GrepSearch{WorkDir: workDir})
+    r.Register(&CodebaseSearch{WorkDir: workDir})
+    r.Register(&Diagnostics{WorkDir: workDir})
+    r.Register(&URLFetch{})
     r.Register(&ShellExec{WorkDir: workDir})
-    // GitHub integration (gh CLI + GITHUB_TOKEN REST) — same class of ops as modern AI agents.
+    // GitHub integration (gh CLI + GITHUB_TOKEN REST)
     r.Register(&GitHubTool{Client: defaultGitHubClient(workDir)})
     return r
 }
+
 
 func (r *Registry) Register(t Tool) {
     if _, exists := r.tools[t.Name()]; !exists {

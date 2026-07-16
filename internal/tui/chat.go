@@ -14,6 +14,7 @@ import (
 	"github.com/codeforge/tui/internal/agent"
 	"github.com/codeforge/tui/internal/git"
 	"github.com/codeforge/tui/internal/provider"
+	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/codeforge/tui/internal/tool"
 	"github.com/codeforge/tui/internal/ui/markdown"
@@ -73,6 +74,9 @@ type ChatModel struct {
 
 	// attached @files for next submit
 	attachments map[string]string
+
+	// project rules injected into system prompts
+	rulesText string
 }
 
 func NewChatModel(provReg *provider.Registry, toolReg *tool.Registry, repo *git.Repo, workdir string) ChatModel {
@@ -159,6 +163,18 @@ func (c *ChatModel) AttachFile(rel, content string) {
 	c.attachments[rel] = content
 }
 
+// SetRules installs project rules text for system prompt injection.
+func (c *ChatModel) SetRules(text string) {
+	c.rulesText = text
+}
+
+func (c *ChatModel) systemWithRules(base string) string {
+	if c.rulesText == "" {
+		return base
+	}
+	return rules.Inject(base, &rules.Bundle{Text: c.rulesText})
+}
+
 // ────────────────────────────────────────────────────────────
 // Submit
 // ────────────────────────────────────────────────────────────
@@ -208,7 +224,7 @@ func (c *ChatModel) Submit() tea.Cmd {
 		req := provider.CompletionRequest{
 			Messages:  msgs,
 			MaxTokens: 4096,
-			System:    systemPrompt,
+			System:    c.systemWithRules(systemPrompt),
 		}
 		ch, err := p.Stream(context.Background(), req)
 		if err != nil {
@@ -263,7 +279,7 @@ func (c *ChatModel) SubmitAgent(task string) tea.Cmd {
 		cfg := agent.Config{
 			Provider:  p,
 			Tools:     toolReg,
-			System:    agentSystemPrompt,
+			System:    c.systemWithRules(agentSystemPrompt),
 			MaxTokens: 4096,
 		}
 		ch := agent.Run(context.Background(), cfg, msgs)
@@ -690,17 +706,17 @@ Untuk kode, gunakan blok markdown code.`
 const agentSystemPrompt = `You are CodeForge TUI, an AI pair-programming agent by NanoMind (2026).
 
 TOOLS:
-- Filesystem: read_file, write_file, list_dir, grep_search, run_command (sandboxed to workspace roots)
-- Surgical edits (PREFERRED for partial changes): search_replace, apply_patch
-  Use write_file only for new files or full rewrites.
-- GitHub (gh CLI or GITHUB_TOKEN): github tool actions include
-  pr_list/view/create/merge/diff/comment/review_request/ready/commits,
-  issue_*, checks, babysit / babysit_once (CI watch), push, pull, branch_create, log, commit_prs
+- Discovery: codebase_search (index), grep_search, read_file, list_dir, research (read-only sub-agent)
+- Edits: search_replace, apply_patch (preferred), write_file (new/full rewrite only)
+- Verify: diagnostics (go build/vet/test or custom), run_command
+- Docs: fetch_url (public https only; secrets redacted)
+- GitHub: github tool (pr_*, issue_*, babysit, push, pull, …)
+- MCP tools may appear as mcp_<server>_<tool>
 
 INSTRUCTIONS:
-- Read before edit; prefer search_replace / apply_patch over full-file writes
-- After edits, run tests/build; if CI fails use github babysit_once + fix + push
-- write_file / search_replace / apply_patch may STAGE in Plan mode — user reviews
-- Ship workflow: commit → push → pr_create → babysit checks → fix failures → push
-- Prefer squash merges; always return PR/issue URLs
-- Reply in the user's language; be concise`
+- Follow Project rules section if present
+- Never request or echo secrets; sensitive files are redacted automatically
+- Prefer codebase_search → read_file → search_replace over blind rewrites
+- After edits run diagnostics; for CI use github babysit_once / babysit
+- Ship: commit → push → pr_create → babysit → fix → push
+- Reply in the user's language; be concise; return URLs for PRs/issues`

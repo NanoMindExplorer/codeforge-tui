@@ -27,6 +27,10 @@ type StatusBarModel struct {
 	GitHubUser string
 	GitHubRepo string
 	GitHubOK   bool
+	// Budget
+	BudgetMax  float64
+	BudgetWarn bool // over warn threshold
+	BudgetStop bool // over max
 }
 
 func NewStatusBarModel() StatusBarModel {
@@ -76,8 +80,17 @@ func (s StatusBarModel) ViewTop() string {
 	} else if s.GitHubRepo != "" {
 		ghPart = "  gh:?"
 	}
-	info := fmt.Sprintf(" %s  git:%s%s  %s  $%.4f ",
-		aiStatus, s.Branch, ghPart, spark, s.Cost)
+	costPart := fmt.Sprintf("$%.4f", s.Cost)
+	if s.BudgetMax > 0 {
+		costPart = fmt.Sprintf("$%.4f/$%.2f", s.Cost, s.BudgetMax)
+		if s.BudgetStop {
+			costPart = "⛔" + costPart
+		} else if s.BudgetWarn {
+			costPart = "⚠" + costPart
+		}
+	}
+	info := fmt.Sprintf(" %s  git:%s%s  %s  %s ",
+		aiStatus, s.Branch, ghPart, spark, costPart)
 
 	helpHint := lipgloss.NewStyle().Foreground(t.TextMuted).Render("?=help  ⌘K  /gh  q")
 

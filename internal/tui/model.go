@@ -17,8 +17,10 @@ import (
 	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/git"
 	gh "github.com/codeforge/tui/internal/github"
+	"github.com/codeforge/tui/internal/index"
 	"github.com/codeforge/tui/internal/keymap"
 	"github.com/codeforge/tui/internal/provider"
+	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/session"
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/codeforge/tui/internal/tool"
@@ -97,6 +99,12 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		sess.Model = cur.Model()
 	}
 	ghc := gh.New(workdir)
+	chat := NewChatModel(provReg, toolReg, repo, workdir)
+	// Project rules
+	rb := rules.Get()
+	if rb != nil && rb.Text != "" {
+		chat.SetRules(rb.Text)
+	}
 	m := Model{
 		cfg:         cfg,
 		providerReg: provReg,
@@ -108,7 +116,7 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		mode:        ModeNormal,
 		agentMode:   tool.ModePlan,
 		startTime:   time.Now(),
-		chat:        NewChatModel(provReg, toolReg, repo, workdir),
+		chat:        chat,
 		diff:        NewDiffModel(),
 		context:     NewContextModel(workdir),
 		status:      NewStatusBarModel(),
@@ -122,6 +130,9 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 	// Ensure staged writer is in Plan mode
 	if sw := toolReg.GetStagedWriter(); sw != nil {
 		sw.SetMode(tool.ModePlan)
+	}
+	if rb != nil && len(rb.Paths) > 0 {
+		m.chat.AddSystemMessage(rb.Summary())
 	}
 	return m
 }
@@ -241,8 +252,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.chat.streaming {
 					return m, nil
 				}
-				// multi-line: shift+enter not always available — use enter to send
-				// unless raw contains trailing \ for continuation — keep simple: enter sends
 				inp := strings.TrimSpace(m.chat.InputValue())
 				if inp == "" {
 					return m, nil
@@ -255,6 +264,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						cmds = append(cmds, c)
 					}
 					return m, tea.Batch(cmds...)
+				}
+				if m.budgetBlocks() {
+					m.chat.AddSystemMessage("⛔ Budget exceeded — agent/chat blocked (see /budget)")
+					return m, nil
 				}
 				if c := m.chat.Submit(); c != nil {
 					cmds = append(cmds, c)
@@ -624,6 +637,9 @@ func buildPaletteItems(m *Model) []palette.Item {
 		{"/pr babysit --fix", "PR babysit+fix", "Poll CI then agent-fix"},
 		{"/issue list", "Issues", "List GitHub issues"},
 		{"/gh auth", "GitHub auth", "Auth status"},
+		{"/rules", "Rules", "Show project AGENTS.md rules"},
+		{"/index", "Index", "Codebase index stats"},
+		{"/budget", "Budget", "Cost budget status"},
 		{"/clear", "Clear", "Clear chat"},
 		{"/quit", "Quit", "Exit CodeForge"},
 	}
@@ -768,6 +784,37 @@ func (m *Model) accTokens(in, out int) {
 		cost = provider.CostForModel(cur, cur.Model(), in, out)
 	}
 	m.totalCost += cost
+	m.checkBudget()
+}
+
+func (m *Model) checkBudget() {
+	if m.cfg == nil {
+		return
+	}
+	max := m.cfg.Budget.MaxCostUSD
+	warn := m.cfg.Budget.WarnAtUSD
+	if max <= 0 {
+		return
+	}
+	if warn <= 0 {
+		warn = max * 0.5
+	}
+	m.status.BudgetMax = max
+	m.status.BudgetWarn = m.totalCost >= warn
+	m.status.BudgetStop = m.totalCost >= max
+	if m.status.BudgetStop {
+		m.toast = components.NewToast(fmt.Sprintf("Budget exceeded $%.2f — agent blocked", max), "error", 5*time.Second)
+	} else if m.status.BudgetWarn && m.totalCost-costEpsilon() < warn {
+		// only toast once-ish when crossing
+		m.toast = components.NewToast(fmt.Sprintf("Budget warning $%.4f / $%.2f", m.totalCost, max), "warning", 3*time.Second)
+	}
+}
+
+func costEpsilon() float64 { return 0.00001 }
+
+// budgetBlocks returns true if further paid AI calls should be refused.
+func (m *Model) budgetBlocks() bool {
+	return m.cfg != nil && m.cfg.Budget.MaxCostUSD > 0 && m.totalCost >= m.cfg.Budget.MaxCostUSD
 }
 
 func (m *Model) recalcSizes() {
@@ -814,6 +861,17 @@ func (m *Model) syncStatus() {
 	m.status.Tokens = m.totalTokens
 	m.status.Cost = m.totalCost
 	m.status.Streaming = m.chat.streaming
+	if m.cfg != nil {
+		m.status.BudgetMax = m.cfg.Budget.MaxCostUSD
+		if m.cfg.Budget.MaxCostUSD > 0 {
+			warn := m.cfg.Budget.WarnAtUSD
+			if warn <= 0 {
+				warn = m.cfg.Budget.MaxCostUSD * 0.5
+			}
+			m.status.BudgetWarn = m.totalCost >= warn
+			m.status.BudgetStop = m.totalCost >= m.cfg.Budget.MaxCostUSD
+		}
+	}
 	if m.agentMode == tool.ModePlan {
 		m.status.AgentMode = "PLAN"
 	} else {
@@ -1149,10 +1207,52 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 
 	case "act", "a":
 		if argStr == "" {
-			m.chat.AddSystemMessage("Contoh:\n  /act baca main.go dan jelaskan\n  /act tambahkan error handling")
+			m.chat.AddSystemMessage("Examples:\n  /act explain auth flow\n  /act fix failing tests")
+			return nil
+		}
+		if m.budgetBlocks() {
+			m.chat.AddSystemMessage("⛔ Budget exceeded — raise budget.max_cost_usd or /clear cost via new session")
 			return nil
 		}
 		return m.chat.SubmitAgent(argStr)
+
+	case "rules":
+		rb := rules.Get()
+		if rb == nil || rb.Text == "" {
+			m.chat.AddSystemMessage("No project rules. Create AGENTS.md or .codeforge/rules.md in the project root.")
+			return nil
+		}
+		m.chat.AddSystemMessage(rb.Summary() + "\n\n" + rb.Text)
+		return nil
+
+	case "index":
+		idx := index.Global()
+		if idx == nil {
+			m.chat.AddSystemMessage("Index not ready — building…")
+			return func() tea.Msg {
+				built, err := index.Build(m.workdir)
+				if err != nil {
+					return errMsg{err: err}
+				}
+				index.SetGlobal(built)
+				f, s := built.Stats()
+				return ToastMsg{Text: fmt.Sprintf("Index ready: %d files, %d symbols", f, s), Kind: "success"}
+			}
+		}
+		f, s := idx.Stats()
+		m.chat.AddSystemMessage(fmt.Sprintf("Codebase index: %d files, %d symbols\nUse agent tool codebase_search or /act where is X?", f, s))
+		return nil
+
+	case "budget":
+		if m.cfg == nil {
+			m.chat.AddSystemMessage("No config")
+			return nil
+		}
+		m.chat.AddSystemMessage(fmt.Sprintf(
+			"Session cost: $%.4f\nBudget max: $%.2f (0=unlimited)\nWarn at: $%.2f\nTokens: %d\n\nSet in config:\n  budget:\n    max_cost_usd: 1.0\n    warn_at_usd: 0.5",
+			m.totalCost, m.cfg.Budget.MaxCostUSD, m.cfg.Budget.WarnAtUSD, m.totalTokens,
+		))
+		return nil
 
 	case "read", "r":
 		if argStr == "" {
@@ -1756,7 +1856,7 @@ func modeString(m Mode) string {
 var slashCommands = []string{
 	"/act", "/read", "/ls", "/grep", "/run", "/explain", "/fix",
 	"/status", "/commit", "/push", "/pull", "/pr", "/issue", "/gh",
-	"/provider", "/model", "/mode", "/cost",
+	"/provider", "/model", "/mode", "/cost", "/budget", "/rules", "/index",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
 
@@ -1770,26 +1870,30 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge TUI v0.5.0  ·  NanoMind 2026  ·  Tier-1 Agent Platform
+	return `CodeForge TUI v0.6.0  ·  NanoMind 2026  ·  Tier-2 Intelligence
 
 ` + keymap.FullHelp() + `
 
-GITHUB & SHIP
-  /gh auth · /push · /pull · /pr · /issue
-  /pr babysit [n] [--fix]   poll CI · auto-fix with agent
-  (see /gh help)
+PROJECT INTELLIGENCE
+  /rules     Show AGENTS.md / project rules
+  /index     Codebase index stats (codebase_search tool)
+  /budget    Session cost vs budget.max_cost_usd
 
-EDITING
-  Prefer agent tools search_replace + apply_patch over full rewrites`
+GITHUB & SHIP
+  /gh · /pr · /issue · /pr babysit [--fix]
+
+AGENT TOOLS
+  research · codebase_search · diagnostics · fetch_url
+  search_replace · apply_patch · github · mcp_*`
 }
 
 func aboutText() string {
-	return `CodeForge TUI v0.5.0
+	return `CodeForge TUI v0.6.0
 Created by NanoMind — 2026 — Apache 2.0
 
-Tier-1: PR babysit · surgical patches · multi-root workspace · tool progress
-Stack: Go · Bubble Tea · Glamour · Gemini/Claude/OpenAI/Ollama
-GitHub: gh CLI + REST — PRs, issues, checks, comments, reviews
+Tier-2: AGENTS.md rules · codebase index · diagnostics · fetch_url
+        research sub-agent · MCP servers · cost budget · secret redaction
+Stack: Go · Bubble Tea · Glamour · multi-provider · gh
 Design: Terminal Glass / Aurora Dark
 
 "Terminal AI coding companion — open, modular, vendor-neutral — and it feels like the future."

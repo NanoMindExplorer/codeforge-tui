@@ -32,7 +32,8 @@ func NewContextModel(workdir string) ContextModel {
 		workdir: workdir,
 		tools: []string{
 			"read_file", "write_file", "search_replace", "apply_patch",
-			"list_dir", "grep_search", "run_command", "github",
+			"list_dir", "grep_search", "codebase_search", "diagnostics",
+			"fetch_url", "research", "run_command", "github",
 		},
 	}
 	c.RefreshFiles(nil)

@@ -17,6 +17,29 @@ type Config struct {
     Git             GitConfig           `mapstructure:"git"`
     Permissions     PermissionsConfig   `mapstructure:"permissions"`
     Workspace       WorkspaceConfig     `mapstructure:"workspace"`
+    Budget          BudgetConfig        `mapstructure:"budget"`
+    MCP             MCPConfig           `mapstructure:"mcp"`
+}
+
+// BudgetConfig limits spend and can block further agent calls.
+type BudgetConfig struct {
+    // MaxCostUSD hard-stops agent/chat submits when totalCost exceeds this (0 = unlimited)
+    MaxCostUSD float64 `mapstructure:"max_cost_usd"`
+    // WarnAtUSD shows a toast when cost crosses this (0 = 50% of max if max set)
+    WarnAtUSD float64 `mapstructure:"warn_at_usd"`
+}
+
+// MCPConfig lists stdio MCP servers to attach at startup.
+type MCPConfig struct {
+    Servers []MCPServer `mapstructure:"servers"`
+}
+
+// MCPServer is one MCP stdio server entry.
+type MCPServer struct {
+    Name    string            `mapstructure:"name"`
+    Command string            `mapstructure:"command"`
+    Args    []string          `mapstructure:"args"`
+    Env     map[string]string `mapstructure:"env"`
 }
 
 // WorkspaceConfig enables multi-root monorepo support.
@@ -113,6 +136,11 @@ func Default() *Config {
             ExtraRoots: nil,
             IgnoreDirs: nil,
         },
+        Budget: BudgetConfig{
+            MaxCostUSD: 0,
+            WarnAtUSD:  0,
+        },
+        MCP: MCPConfig{Servers: nil},
     }
 }
 

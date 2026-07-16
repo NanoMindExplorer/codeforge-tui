@@ -12,7 +12,7 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v0.5.0` |
+| **Version** | `v0.6.0` |
 
 CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
@@ -58,6 +58,14 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 | **Surgical edits** | **`search_replace`** + **`apply_patch`** (Plan-staged) preferred over full-file rewrites. |
 | **Monorepo** | Multi-root workspace (`workspace.extra_roots`) + smart ignores / secret file skips. |
 | **Live tools** | Tool progress streaming (babysit polls, long outputs) in the chat timeline. |
+| **Project rules** | Auto-loads `AGENTS.md`, `CLAUDE.md`, `.codeforge/rules.md`, … into system prompts. |
+| **Codebase index** | Offline keyword/symbol index + `codebase_search` tool. |
+| **Diagnostics** | `diagnostics` tool (`go build` / `vet` / `test` / custom). |
+| **Research sub-agent** | Read-only `research` tool for broad investigation. |
+| **MCP** | Configure stdio MCP servers → tools registered as `mcp_*`. |
+| **Budget** | `budget.max_cost_usd` hard-stop + status bar meter. |
+| **Secret redaction** | Strips keys/tokens/`.env` before model context. |
+| **Docs fetch** | `fetch_url` for public HTTPS (SSRF-safe). |
 | **Theme** | Aurora Dark design tokens; light theme; optional `~/.codeforge/theme.yaml`. |
 | **Motion** | Breathing gradient borders, typewriter system messages, toast notifications. Disable with `--no-motion`. |
 | **Portable** | Pure Go, `CGO_ENABLED=0`, Termux / Android friendly (~21MB single binary). |
@@ -110,7 +118,7 @@ codeforge --no-motion
 
 ```bash
 codeforge --version
-# → codeforge 0.5.0
+# → codeforge 0.6.0
 ```
 
 ---
@@ -422,14 +430,64 @@ Paths resolve against primary workdir first, then extra roots. Grep skips secret
 
 Also via agent: `github` action `babysit` / `babysit_once`.
 
+### Project rules (AGENTS.md)
+
+Place any of these in the project root (merged if several exist):
+
+- `AGENTS.md` · `CLAUDE.md` · `CODEFORGE.md`
+- `.codeforge/rules.md` · `.cursorrules` · `.github/copilot-instructions.md`
+
+```text
+/rules          # show loaded rules in chat
+```
+
+Rules are injected into every chat + agent system prompt.
+
+### Codebase intelligence
+
+```text
+/index                              # stats
+/act where is authentication handled?
+# agent uses codebase_search → read_file → …
+```
+
+### MCP servers
+
+```yaml
+# ~/.config/codeforge/config.yaml
+mcp:
+  servers:
+    - name: filesystem
+      command: npx
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]
+```
+
+Tools appear as `mcp_<server>_<tool>` for the agent.
+
+### Cost budget
+
+```yaml
+budget:
+  max_cost_usd: 2.0
+  warn_at_usd: 1.0
+```
+
+```text
+/budget
+```
+
+When the cap is hit, chat/agent submits are blocked until config is raised.
+
 ### Architecture note
 
 ```text
-internal/github/     gh CLI → REST; deeper PR ops + babysit
-internal/workspace/  multi-root sandbox + ignore rules
-internal/tool/       search_replace, apply_patch, github, staged writes
-internal/agent/      EventToolProgress streaming
-internal/ui/markdown lazy glamour (plain path / CODEFORGE_PLAIN_MD=1)
+internal/rules/      AGENTS.md loader + prompt inject
+internal/index/      offline codebase index
+internal/secrets/    redaction before model
+internal/github/     gh CLI → REST; babysit + deep PR ops
+internal/workspace/  multi-root sandbox
+internal/tool/       research, codebase_search, diagnostics, fetch_url, mcp_*, patches
+internal/agent/      EventToolProgress
 ```
 
 ---

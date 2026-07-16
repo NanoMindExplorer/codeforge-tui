@@ -426,7 +426,8 @@ type Registry struct {
 func NewRegistry(workDir string) *Registry {
     r := &Registry{tools: make(map[string]Tool)}
     r.Register(&FileReader{WorkDir: workDir})
-    r.Register(&FileWriter{WorkDir: workDir})
+    // StagedWriter gates writes in Plan mode (default); Act mode writes immediately.
+    r.Register(NewStagedWriter(workDir))
     r.Register(&DirLister{WorkDir: workDir})
     r.Register(&GrepSearch{WorkDir: workDir})
     r.Register(&ShellExec{WorkDir: workDir})

@@ -98,12 +98,24 @@ func NewGeminiProvider(apiKey, defaultModel string) *GeminiProvider {
 
 func (p *GeminiProvider) Name() string { return "gemini" }
 
+func (p *GeminiProvider) Model() string { return p.model }
+
+func (p *GeminiProvider) SetModel(id string) error {
+    if id == "" {
+        return fmt.Errorf("model id required")
+    }
+    p.model = id
+    return nil
+}
+
 func (p *GeminiProvider) Models() []ModelInfo {
+    // Official list pricing (USD / 1M tokens). Flash free-tier is $0 under quota;
+    // Pro is paid. Using published Google AI Studio rates as of 2025.
     return []ModelInfo{
-        {ID: "gemini-2.0-flash-exp", Name: "Gemini 2.5 Flash", ContextWindow: 1048576, InputCost: 0, OutputCost: 0},
-        {ID: "gemini-2.0-flash-exp-lite", Name: "Gemini 2.5 Flash Lite", ContextWindow: 1048576, InputCost: 0, OutputCost: 0},
-        {ID: "gemini-2.5-pro", Name: "Gemini 2.5 Pro", ContextWindow: 1048576, InputCost: 0, OutputCost: 0},
-        {ID: "gemini-2.0-flash-exp", Name: "Gemini 2.0 Flash (Free)", ContextWindow: 1048576, InputCost: 0, OutputCost: 0},
+        {ID: "gemini-2.5-flash", Name: "Gemini 2.5 Flash", ContextWindow: 1048576, InputCost: 0.15, OutputCost: 0.60},
+        {ID: "gemini-2.0-flash", Name: "Gemini 2.0 Flash", ContextWindow: 1048576, InputCost: 0.10, OutputCost: 0.40},
+        {ID: "gemini-2.5-pro", Name: "Gemini 2.5 Pro", ContextWindow: 1048576, InputCost: 1.25, OutputCost: 10.0},
+        {ID: "gemini-2.0-flash-lite", Name: "Gemini 2.0 Flash Lite", ContextWindow: 1048576, InputCost: 0.075, OutputCost: 0.30},
     }
 }
 

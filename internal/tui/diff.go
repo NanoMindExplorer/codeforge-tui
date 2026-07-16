@@ -1,73 +1,71 @@
 package tui
 
 import (
-    "strings"
-
-    tea "github.com/charmbracelet/bubbletea"
-    "github.com/charmbracelet/lipgloss"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/codeforge/tui/internal/ui/diffview"
 )
 
+// DiffModel is a rich multi-file diff pane (orchestrator over diffview).
 type DiffModel struct {
-    width   int
-    height  int
-    content string
+	width   int
+	height  int
+	files   []diffview.FileDiff
+	idx     int
+	pending bool
+	raw     string
 }
 
 func NewDiffModel() DiffModel {
-    return DiffModel{
-        content: "No changes yet.\n\nWhen the AI edits files,\ndiffs will appear here.",
-    }
+	return DiffModel{}
 }
 
 func (d DiffModel) Init() tea.Cmd { return nil }
 
 func (d *DiffModel) SetSize(w, h int) {
-    d.width = w
-    d.height = h
+	d.width = w
+	d.height = h
 }
 
 func (d *DiffModel) SetContent(content string) {
-    d.content = content
+	d.raw = content
+	d.files = diffview.Parse(content)
+	d.idx = 0
+}
+
+func (d *DiffModel) SetPending(p bool) { d.pending = p }
+
+func (d *DiffModel) NextFile() {
+	if len(d.files) == 0 {
+		return
+	}
+	d.idx = (d.idx + 1) % len(d.files)
+}
+
+func (d *DiffModel) PrevFile() {
+	if len(d.files) == 0 {
+		return
+	}
+	d.idx = (d.idx - 1 + len(d.files)) % len(d.files)
 }
 
 func (d DiffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-    switch msg := msg.(type) {
-    case DiffUpdateMsg:
-        d.content = msg.Content
-    }
-    return d, nil
+	switch msg := msg.(type) {
+	case DiffUpdateMsg:
+		d.raw = msg.Content
+		d.files = diffview.Parse(msg.Content)
+		d.pending = msg.Pending
+		d.idx = 0
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "n", "right":
+			d.NextFile()
+		case "p", "left":
+			d.PrevFile()
+		}
+	}
+	return d, nil
 }
 
 func (d DiffModel) View() string {
-    if d.width < 10 {
-        d.width = 10
-    }
-    if d.height < 5 {
-        d.height = 5
-    }
-    var sb strings.Builder
-    sb.WriteString("Diff\n")
-    sb.WriteString(strings.Repeat("-", max(0, d.width-4)) + "\n\n")
-
-    for _, line := range strings.Split(d.content, "\n") {
-        var styled string
-        switch {
-        case strings.HasPrefix(line, "+"):
-            styled = lipgloss.NewStyle().Foreground(lipgloss.Color("#10B981")).Render(line)
-        case strings.HasPrefix(line, "-"):
-            styled = lipgloss.NewStyle().Foreground(lipgloss.Color("#EF4444")).Render(line)
-        case strings.HasPrefix(line, "@@"):
-            styled = lipgloss.NewStyle().Foreground(lipgloss.Color("#06B6D4")).Render(line)
-        default:
-            styled = line
-        }
-        sb.WriteString(styled + "\n")
-    }
-
-    style := lipgloss.NewStyle().
-        Width(d.width).
-        Height(d.height).
-        Foreground(lipgloss.Color("#94A3B8"))
-
-    return style.Render(sb.String())
+	return diffview.RenderMulti(d.files, d.idx, d.width, d.height, d.pending)
 }

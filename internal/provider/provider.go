@@ -68,10 +68,40 @@ type StreamToken struct {
 type Provider interface {
     Name() string
     Models() []ModelInfo
+    // Model returns the currently selected model ID.
+    Model() string
+    // SetModel switches the active model. Returns error if ID is unknown.
+    SetModel(id string) error
     Complete(ctx context.Context, req CompletionRequest) (*CompletionResponse, error)
     Stream(ctx context.Context, req CompletionRequest) (<-chan StreamToken, error)
     CountTokens(messages []Message) int
     ValidateConfig() error
+}
+
+// CostForModel returns USD cost for token counts using ModelInfo pricing.
+func CostForModel(p Provider, modelID string, in, out int) float64 {
+    if p == nil {
+        return 0
+    }
+    if modelID == "" {
+        modelID = p.Model()
+    }
+    var chosen *ModelInfo
+    for i := range p.Models() {
+        m := p.Models()[i]
+        if m.ID == modelID {
+            chosen = &m
+            break
+        }
+    }
+    if chosen == nil {
+        models := p.Models()
+        if len(models) == 0 {
+            return 0
+        }
+        chosen = &models[0]
+    }
+    return float64(in)*chosen.InputCost/1_000_000 + float64(out)*chosen.OutputCost/1_000_000
 }
 
 type ModelInfo struct {

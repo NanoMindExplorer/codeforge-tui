@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: codeforge
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: codeforge
+    main: ./cmd/codeforge
+    binary: codeforge
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w
+      - -X main.ProjectVersion={{.Version}}
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: NanoMindExplorer
+    name: codeforge
+  draft: false
+  prerelease: auto

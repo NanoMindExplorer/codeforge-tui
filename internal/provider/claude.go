@@ -31,6 +31,23 @@ func NewClaudeProvider(apiKey, defaultModel string) *ClaudeProvider {
 
 func (p *ClaudeProvider) Name() string { return "claude" }
 
+func (p *ClaudeProvider) Model() string { return p.model }
+
+func (p *ClaudeProvider) SetModel(id string) error {
+    for _, m := range p.Models() {
+        if m.ID == id {
+            p.model = id
+            return nil
+        }
+    }
+    // Allow unknown model IDs (forward-compat) if non-empty
+    if id != "" {
+        p.model = id
+        return nil
+    }
+    return fmt.Errorf("model id required")
+}
+
 func (p *ClaudeProvider) Models() []ModelInfo {
     return []ModelInfo{
         {ID: "claude-sonnet-4-20250514", Name: "Claude Sonnet 4", ContextWindow: 200000, InputCost: 3.0, OutputCost: 15.0},

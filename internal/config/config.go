@@ -12,6 +12,8 @@ type Config struct {
     DefaultProvider string              `mapstructure:"default_provider"`
     Providers       map[string]Provider `mapstructure:"providers"`
     Theme           string              `mapstructure:"theme"`
+    DiffMode        string              `mapstructure:"diff_mode"` // side-by-side | unified
+    NoMotion        bool                `mapstructure:"no_motion"`
     Git             GitConfig           `mapstructure:"git"`
     Permissions     PermissionsConfig   `mapstructure:"permissions"`
 }
@@ -46,9 +48,23 @@ type PermissionsConfig struct {
 
 func Default() *Config {
     return &Config{
-        DefaultProvider: "claude",
-        Theme:           "dark",
+        DefaultProvider: "gemini",
+        Theme:           "aurora",
+        DiffMode:        "unified",
+        NoMotion:        false,
         Providers: map[string]Provider{
+            "gemini": {
+                Enabled:      true,
+                Type:         "google",
+                APIKey:       "",
+                DefaultModel: "gemini-2.5-flash",
+                Capabilities: ProviderCapabilities{
+                    Streaming:  true,
+                    ToolUse:    true,
+                    Vision:     true,
+                    MaxContext: 1048576,
+                },
+            },
             "claude": {
                 Enabled:      true,
                 Type:         "anthropic",
@@ -59,6 +75,18 @@ func Default() *Config {
                     ToolUse:    true,
                     Vision:     true,
                     MaxContext: 200000,
+                },
+            },
+            "openai": {
+                Enabled:      true,
+                Type:         "openai",
+                APIKey:       "",
+                DefaultModel: "gpt-4o-mini",
+                Capabilities: ProviderCapabilities{
+                    Streaming:  true,
+                    ToolUse:    true,
+                    Vision:     true,
+                    MaxContext: 128000,
                 },
             },
         },

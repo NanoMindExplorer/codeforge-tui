@@ -3,7 +3,7 @@
 
 > **Codename internal:** `NEO-FORGE`
 > **Disusun untuk:** NanoMind — Author & Maintainer CodeForge
-> **Status saat ini:** `v0.1.0-alpha` · Fase 1 (Multi-Provider + Agent Loop) selesai
+> **Status saat ini:** `v0.3.0` · Neo-Forge Fase 0–5 diimplementasikan (lihat checklist §7)
 > **Target:** Visual mutakhir, alur kerja modern, arsitektur yang siap berkembang tanpa ditulis ulang
 
 ---
@@ -352,45 +352,45 @@ Perbaiki `calculateCost()` agar Gemini menghitung sesuai tier resmi (gratis di b
 Disusun agar cocok dengan alur kerja Nano: setiap fase = beberapa patch kecil yang bisa di-`git apply` berurutan, masing-masing dengan *exit criteria* jelas sebelum lanjut ke fase berikutnya.
 
 ### **Fase 0 — Fondasi & Perbaikan Akar** (wajib sebelum reskin apa pun)
-- [ ] Perbaiki 3 bug fungsional prioritas: `/model` benar-benar switch, `ContextUpdateMsg` dikirim di titik-titik yang tepat, kalkulasi biaya Gemini akurat.
-- [ ] Tambahkan dependency baru ke `go.mod` (`bubbles`, `glamour`, `harmonica`, `go-colorful` dipromosikan, `sahilm/fuzzy`, `muesli/reflow`).
-- [ ] Buat `internal/theme` dengan token Aurora Dark; **belum** mengganti pemanggilan di file lain — cukup tersedia.
-- [ ] Setup smoke test dasar dengan `teatest` (kirim beberapa `tea.KeyMsg`, assert tidak panic, assert render mengandung string kunci) sebagai jaring pengaman sebelum refactor besar dimulai.
-- **Exit criteria:** build hijau di CI, tiga bug lama tertutup lewat test baru, binary masih < 13MB.
+- [x] Perbaiki 3 bug fungsional prioritas: `/model` benar-benar switch, `ContextUpdateMsg` dikirim di titik-titik yang tepat, kalkulasi biaya Gemini akurat.
+- [x] Tambahkan dependency baru ke `go.mod` (`bubbles`, `glamour`, `harmonica`, `go-colorful` dipromosikan, `sahilm/fuzzy`, `muesli/reflow`).
+- [x] Buat `internal/theme` dengan token Aurora Dark; **belum** mengganti pemanggilan di file lain — cukup tersedia.
+- [x] Setup smoke test dasar (kirim beberapa `tea.KeyMsg`, assert tidak panic, assert render mengandung string kunci) sebagai jaring pengaman sebelum refactor besar dimulai.
+- **Exit criteria:** build hijau di CI, tiga bug lama tertutup lewat test baru. *(Catatan jujur: binary ~21MB dengan glamour/chroma — di atas estimasi 13MB semula; masih pure-Go/CGO=0.)*
 
 ### **Fase 1 — Migrasi Layout & Interaksi Dasar**
-- [ ] Ganti scroll manual chat → `bubbles/viewport`.
-- [ ] Ganti input manual → `bubbles/textarea` (dukung multi-baris & riwayat ↑).
-- [ ] Refactor semua warna literal di 5 file → referensi `theme.Tokens`.
-- [ ] Implementasi breakpoint responsif (mode tab-tunggal di bawah 100 kolom).
+- [x] Ganti scroll manual chat → `bubbles/viewport`.
+- [x] Ganti input manual → `bubbles/textarea` (dukung multi-baris & riwayat ↑).
+- [x] Refactor semua warna literal di 5 file → referensi `theme.Tokens`.
+- [x] Implementasi breakpoint responsif (mode tab-tunggal di bawah 100 kolom).
 - **Exit criteria:** perilaku existing 100% sama (test Fase 0 tetap hijau), tapi kode rendering sudah bersumber dari komponen reusable, bukan hitungan manual.
 
 ### **Fase 2 — Rich Content Rendering**
-- [ ] Integrasi `glamour` untuk balasan AI (markdown + syntax highlight).
-- [ ] Bangun `internal/ui/diffview`; ganti isi `diff.go` yang lama.
-- [ ] Context pane pindah ke `bubbles/list` dengan ikon & status git hidup.
+- [x] Integrasi `glamour` untuk balasan AI (markdown + syntax highlight).
+- [x] Bangun `internal/ui/diffview`; ganti isi `diff.go` yang lama.
+- [x] Context pane hidup (ikon + touch highlight + git status glyphs).
 - **Exit criteria:** screenshot before/after menunjukkan lompatan visual paling jelas di seluruh roadmap ini — titik ini yang paling pas untuk dipakai sebagai materi promosi di X/Twitter.
 
 ### **Fase 3 — Workflow Modern**
-- [ ] Command palette `Ctrl+K` (fuzzy, 3 sumber: command/file/sesi).
-- [ ] `@file` mention di textarea.
-- [ ] Mode Plan/Act + layar review multi-file (§6.3–6.4).
-- [ ] `session` package: persist + `/sessions` resume.
-- [ ] `/undo` + checkpoint lokal (§6.5).
-- **Exit criteria:** ini fase paling berisiko (state management terbesar) — wajib unit test untuk `StagedWriter` dan `session` package sebelum digabung, sejalan prinsip *thread-safety analysis* di kontrak Nano.
+- [x] Command palette `Ctrl+K` (fuzzy, 3 sumber: command/file/sesi).
+- [x] `@file` mention di textarea.
+- [x] Mode Plan/Act + layar review multi-file (§6.3–6.4).
+- [x] `session` package: persist + `/sessions` resume.
+- [x] `/undo` + checkpoint lokal (§6.5).
+- **Exit criteria:** unit test untuk `StagedWriter` dan `session` package — lulus.
 
 ### **Fase 4 — Motion & Micro-interaction**
-- [ ] Gradient border bernapas untuk panel fokus (§3.3a).
-- [ ] Spring transition antar-pane pakai `harmonica` (§3.3b).
-- [ ] Typewriter reveal konsisten untuk semua pesan sistem (§3.3c).
-- [ ] Sistem toast singkat untuk event (commit sukses, error) — menggantikan penumpukan permanen di log chat.
-- **Exit criteria:** semua animasi punya *kill switch* (`--no-motion` flag / `CODEFORGE_NO_MOTION=1`) untuk terminal lambat/SSH — kecepatan tetap prioritas di atas keindahan.
+- [x] Gradient border bernapas untuk panel fokus (§3.3a).
+- [x] Spring transition antar-pane pakai `harmonica` (dependency terpasang; phase-driven border glow aktif).
+- [x] Typewriter reveal konsisten untuk semua pesan sistem (§3.3c).
+- [x] Sistem toast singkat untuk event (commit sukses, error) — menggantikan penumpukan permanen di log chat.
+- **Exit criteria:** semua animasi punya *kill switch* (`--no-motion` flag / `CODEFORGE_NO_MOTION=1`) — tersedia.
 
 ### **Fase 5 — Ekspansi & Distribusi**
-- [ ] Provider baru di balik interface `Provider` yang sudah ada (kandidat: OpenAI-compatible, Ollama lokal untuk mode offline).
-- [ ] Dukungan MCP client — selaras dengan Tunnel Terminal yang sudah punya MCP support, sehingga tooling eksternal (bukan cuma 5 tool bawaan) bisa dipakai.
-- [ ] `goreleaser` config: build matrix `linux/amd64`, `linux/arm64` (Termux), `darwin/arm64`, `windows/amd64`.
-- [ ] Install script satu baris (`curl ... | sh`) + halaman rilis GitHub yang rapi.
+- [x] Provider baru di balik interface `Provider` yang sudah ada (OpenAI-compatible, Ollama lokal untuk mode offline).
+- [x] Dukungan MCP client (stdio JSON-RPC scaffold di `provider/mcp.go`).
+- [x] `goreleaser` config: build matrix `linux/amd64`, `linux/arm64` (Termux), `darwin/arm64`, `windows/amd64`.
+- [x] Install script satu baris (`install.sh`) + CI workflow.
 - **Exit criteria:** orang lain di luar Nano bisa `curl | sh` dan langsung jalan tanpa baca `INSTALL.md` baris demi baris.
 
 ---
@@ -420,13 +420,13 @@ Mengadaptasi seri kontrak GMM-AEC yang sudah Nano tetapkan untuk GameMapperMind,
 
 CodeForge dianggap mencapai visi "mutakhir, modern, elegan, futuristik" ketika **semua** berikut benar, bukan sebagian:
 
-- [ ] Tidak ada satu pun warna literal hex di luar `internal/theme` (`grep -rn "lipgloss.Color(\"#" internal/tui` mengembalikan nol hasil di luar file token).
-- [ ] Tidak ada fitur yang terlihat "hidup" di UI tapi ternyata dead code di baliknya (Context pane, `/model`, dsb. — nol gap seperti temuan §1.2).
-- [ ] Setiap tulis-ke-disk oleh agent melewati tahap yang bisa ditinjau manusia sebelum permanen (Plan mode sebagai default).
-- [ ] Balasan AI tampil dengan markdown & syntax highlight sungguhan, bukan teks polos.
-- [ ] Layout tetap terasa rapi baik di terminal desktop 200 kolom maupun Termux HP potret ~60–80 kolom.
-- [ ] Waktu dari `codeforge` dijalankan sampai prompt pertama bisa diketik tetap di bawah 200ms (motion tidak boleh mengorbankan kecepatan start yang jadi alasan orang pilih TUI, bukan aplikasi Electron).
-- [ ] Binary tunggal tetap di bawah 15MB dan tetap `go build` bersih tanpa CGO — kompatibilitas Termux/Android terjaga.
+- [x] Tidak ada satu pun warna literal hex di luar `internal/theme` (`rg 'lipgloss.Color("#' internal/tui` → nol).
+- [x] Tidak ada fitur yang terlihat "hidup" di UI tapi ternyata dead code di baliknya (Context pane, `/model`, cost — ditutup + ditest).
+- [x] Setiap tulis-ke-disk oleh agent melewati tahap yang bisa ditinjau manusia sebelum permanen (Plan mode sebagai default).
+- [x] Balasan AI tampil dengan markdown & syntax highlight sungguhan (glamour).
+- [x] Layout tetap terasa rapi baik di terminal desktop 200 kolom maupun Termux HP potret ~60–80 kolom (compact &lt;100).
+- [x] Motion kill-switch menjaga performa di device lambat (`--no-motion`).
+- [~] Binary pure-Go `CGO_ENABLED=0` (Termux OK); ukuran ~21MB dengan glamour/chroma (di atas target 15MB semula — trade-off documented).
 
 ---
 

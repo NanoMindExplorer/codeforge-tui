@@ -1,113 +1,114 @@
 package tui
 
 import (
-    "fmt"
-    "strings"
-    "time"
+	"fmt"
+	"strings"
+	"time"
 
-    tea "github.com/charmbracelet/bubbletea"
-    "github.com/charmbracelet/lipgloss"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/codeforge/tui/internal/keymap"
+	"github.com/codeforge/tui/internal/theme"
 )
 
 type StatusBarModel struct {
-    width     int
-    Provider  string
-    Mode      string
-    Branch    string
-    Workdir   string
-    Cost      float64
-    Tokens    int
-    Streaming bool // true saat AI sedang streaming atau agent berjalan
+	width     int
+	Provider  string
+	ModelName string
+	Mode      string // NORMAL / INSERT / COMMAND
+	AgentMode string // PLAN / ACT
+	Branch    string
+	Workdir   string
+	Cost      float64
+	Tokens    int
+	Streaming bool
+	Spark     []float64 // token rate samples
 }
 
 func NewStatusBarModel() StatusBarModel {
-    return StatusBarModel{
-        Provider: "claude",
-        Mode:     "NORMAL",
-        Branch:   "main",
-    }
+	return StatusBarModel{
+		Provider:  "gemini",
+		Mode:      "NORMAL",
+		AgentMode: "PLAN",
+		Branch:    "main",
+	}
 }
 
-func (s *StatusBarModel) SetSize(w int) {
-    s.width = w
+func (s *StatusBarModel) SetSize(w int) { s.width = w }
+
+func (s *StatusBarModel) PushSpark(v float64) {
+	s.Spark = append(s.Spark, v)
+	if len(s.Spark) > 32 {
+		s.Spark = s.Spark[len(s.Spark)-32:]
+	}
 }
 
 func (s StatusBarModel) Init() tea.Cmd { return nil }
 
 func (s StatusBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-    return s, nil
+	return s, nil
 }
 
-func (s StatusBarModel) View() string {
-    return s.ViewTop()
-}
+func (s StatusBarModel) View() string { return s.ViewTop() }
 
 func (s StatusBarModel) ViewTop() string {
-    brandStyle := lipgloss.NewStyle().
-        Bold(true).
-        Foreground(lipgloss.Color("#06B6D4")).
-        Padding(0, 1)
+	t := theme.Current()
+	brand := lipgloss.NewStyle().Bold(true).Foreground(t.AccentAI).Padding(0, 1).Render("⚡ CodeForge")
+	mode := theme.ModeBadge(s.Mode)
+	agent := theme.ModeBadge(s.AgentMode)
 
-    modeStyle := lipgloss.NewStyle().
-        Bold(true).
-        Background(modeColor(s.Mode)).
-        Foreground(lipgloss.Color("#FFFFFF")).
-        Padding(0, 1)
+	aiStatus := s.Provider
+	if s.ModelName != "" {
+		aiStatus = s.Provider + " · " + shortModel(s.ModelName)
+	}
+	if s.Streaming {
+		aiStatus = "⠋ " + aiStatus
+	}
 
-    infoStyle := lipgloss.NewStyle().
-        Foreground(lipgloss.Color("#94A3B8")).
-        Padding(0, 1)
+	spark := theme.Sparkline(s.Spark)
+	info := fmt.Sprintf(" %s  git:%s  %s  $%.4f ",
+		aiStatus, s.Branch, spark, s.Cost)
 
-    brand := brandStyle.Render("⚡ CodeForge")
-    mode := modeStyle.Render(s.Mode)
+	helpHint := lipgloss.NewStyle().Foreground(t.TextMuted).Render("?=help  ⌘K  q")
 
-    aiStatus := s.Provider
-    if s.Streaming {
-        aiStatus = "⠋ " + s.Provider + " …"
-    }
+	middleWidth := s.width - lipgloss.Width(brand) - lipgloss.Width(mode) - lipgloss.Width(agent) - lipgloss.Width(helpHint) - 3
+	if middleWidth < 0 {
+		middleWidth = 0
+	}
+	middleInfo := lipgloss.NewStyle().Foreground(t.TextSecondary).Width(middleWidth).Render(info)
 
-    info := fmt.Sprintf("  %s  git:%s  tok:%d  $%.4f  ",
-        aiStatus, s.Branch, s.Tokens, s.Cost)
-
-    helpHint := infoStyle.Render("?=help  /=cmd  q=quit")
-
-    middleWidth := s.width - lipgloss.Width(brand) - lipgloss.Width(mode) - lipgloss.Width(helpHint) - 2
-    if middleWidth < 0 {
-        middleWidth = 0
-    }
-    middleInfo := infoStyle.Width(middleWidth).Render(info)
-
-    return lipgloss.NewStyle().
-        Background(lipgloss.Color("#1E293B")).
-        Width(s.width).
-        Render(lipgloss.JoinHorizontal(lipgloss.Left, brand, mode, middleInfo, helpHint))
+	return theme.StatusBarStyle(s.width).Render(
+		lipgloss.JoinHorizontal(lipgloss.Left, brand, mode, " ", agent, middleInfo, helpHint),
+	)
 }
 
 func (s StatusBarModel) ViewBottom() string {
-    style := lipgloss.NewStyle().
-        Background(lipgloss.Color("#1E293B")).
-        Foreground(lipgloss.Color("#94A3B8")).
-        Width(s.width).
-        Padding(0, 1)
-
-    left := "i:chat  I:/act  /:cmd  1-3:pane  Tab:next  j/k:scroll  q:quit"
-    right := time.Now().Format("15:04")
-
-    padding := s.width - len(left) - len(right) - 2
-    if padding < 0 {
-        padding = 0
-    }
-    return style.Render(left + strings.Repeat(" ", padding) + right)
+	t := theme.Current()
+	left := keymap.Default().ShortHelp()
+	right := time.Now().Format("15:04")
+	pad := s.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
+	if pad < 1 {
+		pad = 1
+	}
+	return lipgloss.NewStyle().
+		Background(t.BgElevated).
+		Foreground(t.TextMuted).
+		Width(s.width).
+		Padding(0, 1).
+		Render(left + strings.Repeat(" ", pad) + right)
 }
 
-func modeColor(mode string) lipgloss.Color {
-    switch mode {
-    case "NORMAL":
-        return lipgloss.Color("#10B981")
-    case "INSERT":
-        return lipgloss.Color("#F59E0B")
-    case "COMMAND":
-        return lipgloss.Color("#318AB7")
-    }
-    return lipgloss.Color("#64748B")
+func shortModel(id string) string {
+	// claude-sonnet-4-20250514 → sonnet-4
+	parts := strings.Split(id, "-")
+	if len(parts) >= 2 {
+		// take last meaningful chunks
+		if len(id) > 24 {
+			if len(parts) >= 3 {
+				return parts[1] + "-" + parts[2]
+			}
+			return id[:20] + "…"
+		}
+	}
+	return id
 }

@@ -223,19 +223,19 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req CompletionRequest) (*
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("openai: %w", err)
+		return nil, HTTPError(p.name, 0, nil, err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("openai error %d: %s", resp.StatusCode, string(raw))
+		return nil, HTTPError(p.name, resp.StatusCode, raw, nil)
 	}
 	var oai oaiResp
 	if err := json.Unmarshal(raw, &oai); err != nil {
 		return nil, err
 	}
 	if oai.Error != nil {
-		return nil, fmt.Errorf("openai: %s", oai.Error.Message)
+		return nil, Classify(nil, 400, oai.Error.Message, p.name)
 	}
 	result := &CompletionResponse{
 		InputTokens:  oai.Usage.PromptTokens,
@@ -297,13 +297,13 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
 
 		resp, err := p.client.Do(httpReq)
 		if err != nil {
-			out <- StreamToken{Done: true, Error: err}
+			out <- StreamToken{Done: true, Error: HTTPError(p.name, 0, nil, err)}
 			return
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
 			b, _ := io.ReadAll(resp.Body)
-			out <- StreamToken{Done: true, Error: fmt.Errorf("openai %d: %s", resp.StatusCode, string(b))}
+			out <- StreamToken{Done: true, Error: HTTPError(p.name, resp.StatusCode, b, nil)}
 			return
 		}
 		sc := bufio.NewScanner(resp.Body)

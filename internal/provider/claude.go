@@ -173,7 +173,7 @@ func (p *ClaudeProvider) Complete(ctx context.Context, req CompletionRequest) (*
     }
     resp, err := p.client.CreateMessages(ctx, anthropicReq)
     if err != nil {
-        return nil, fmt.Errorf("anthropic: %w", err)
+        return nil, Classify(err, 0, err.Error(), "claude")
     }
     result := &CompletionResponse{
         InputTokens:  resp.Usage.InputTokens,
@@ -280,13 +280,13 @@ func (p *ClaudeProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
                 }
                 out <- StreamToken{
                     Done:  true,
-                    Error: fmt.Errorf("stream: %s", msg),
+                    Error: Classify(nil, 0, msg, "claude"),
                 }
             },
         }
         _, err := p.client.CreateMessagesStream(ctx, streamReq)
         if err != nil {
-            out <- StreamToken{Done: true, Error: fmt.Errorf("anthropic: %w", err)}
+            out <- StreamToken{Done: true, Error: Classify(err, 0, err.Error(), "claude")}
         }
     }()
     return out, nil

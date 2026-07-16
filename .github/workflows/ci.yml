@@ -4,8 +4,6 @@ on:
   push:
     branches: [main, master]
   pull_request:
-  release:
-    types: [published]
 
 jobs:
   test:
@@ -15,33 +13,24 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
+      - name: Version consistency
+        run: bash scripts/check-version.sh
       - name: Test
         run: go test ./...
+      - name: Vet
+        run: go vet ./...
       - name: Build
-        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o codeforge ./cmd/codeforge/
+        run: |
+          VER=$(tr -d '[:space:]' < VERSION)
+          CGO_ENABLED=0 go build -ldflags="-s -w -X main.ProjectVersion=${VER}" -o codeforge ./cmd/codeforge/
       - name: Binary size
         run: |
           SIZE=$(stat -c%s codeforge)
           echo "binary bytes=$SIZE"
-          # soft budget 25MB (glamour/chroma); hard fail above 30MB
           test "$SIZE" -lt 31457280
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.25.x"
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Version binary smoke
+        run: |
+          VER=$(tr -d '[:space:]' < VERSION)
+          out=$(./codeforge version)
+          echo "$out"
+          echo "$out" | grep -q "$VER"

@@ -1,0 +1,51 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+
+      - name: Check VERSION matches tag
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          FILE_VER=$(tr -d '[:space:]' < VERSION)
+          echo "tag=$TAG file=$FILE_VER"
+          if [ "$TAG" != "$FILE_VER" ]; then
+            echo "ERROR: git tag v$TAG must match VERSION file ($FILE_VER)"
+            echo "Run: make bump V=$TAG && commit before tagging"
+            exit 1
+          fi
+          bash scripts/check-version.sh
+
+      - name: Test
+        run: go test ./...
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: HOMEBREW_TAP_GITHUB_TOKEN for push to homebrew-tap
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+
+      - name: Hint formula update
+        if: always()
+        run: |
+          echo "After release publishes, update in-repo Formula with:"
+          echo "  bash scripts/update-formula.sh ${GITHUB_REF_NAME}"

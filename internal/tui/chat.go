@@ -302,7 +302,7 @@ func (c ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			c.store.SealThinking()
 			c.store.SealAssistant()
-			c.store.AddSystem("⚠ Error: " + msg.Error.Error())
+			c.store.AddSystem(provider.FormatUserError(msg.Error))
 			c.streaming = false
 			c.streamFull = ""
 			break
@@ -393,7 +393,7 @@ func (c ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case agent.EventError:
 			c.store.SealThinking()
 			c.store.SealAssistant()
-			c.store.AddSystem("⚠ agent: " + ev.Error.Error())
+			c.store.AddSystem(provider.FormatUserError(ev.Error))
 			c.streaming = false
 			c.agentFull = ""
 		}

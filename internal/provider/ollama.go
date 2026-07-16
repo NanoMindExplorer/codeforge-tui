@@ -134,19 +134,19 @@ func (p *OllamaProvider) Complete(ctx context.Context, req CompletionRequest) (*
 	httpReq.Header.Set("Content-Type", "application/json")
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("ollama: %w", err)
+		return nil, HTTPError("ollama", 0, nil, err)
 	}
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(raw))
+		return nil, HTTPError("ollama", resp.StatusCode, raw, nil)
 	}
 	var or ollamaResp
 	if err := json.Unmarshal(raw, &or); err != nil {
 		return nil, err
 	}
 	if or.Error != "" {
-		return nil, fmt.Errorf("ollama: %s", or.Error)
+		return nil, Classify(nil, 0, or.Error, "ollama")
 	}
 	return &CompletionResponse{
 		Content:    or.Message.Content,
@@ -169,19 +169,19 @@ func (p *OllamaProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
 		defer close(out)
 		httpReq, err := http.NewRequestWithContext(ctx, "POST", p.endpoint+"/api/chat", bytes.NewReader(body))
 		if err != nil {
-			out <- StreamToken{Done: true, Error: err}
+			out <- StreamToken{Done: true, Error: HTTPError("ollama", 0, nil, err)}
 			return
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 		resp, err := p.client.Do(httpReq)
 		if err != nil {
-			out <- StreamToken{Done: true, Error: err}
+			out <- StreamToken{Done: true, Error: HTTPError("ollama", 0, nil, err)}
 			return
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
 			b, _ := io.ReadAll(resp.Body)
-			out <- StreamToken{Done: true, Error: fmt.Errorf("ollama %d: %s", resp.StatusCode, string(b))}
+			out <- StreamToken{Done: true, Error: HTTPError("ollama", resp.StatusCode, b, nil)}
 			return
 		}
 		sc := bufio.NewScanner(resp.Body)

@@ -243,13 +243,13 @@ func (p *GeminiProvider) Complete(ctx context.Context, req CompletionRequest) (*
 
     resp, err := p.client.Do(httpReq)
     if err != nil {
-        return nil, fmt.Errorf("gemini http: %w", err)
+        return nil, HTTPError("gemini", 0, nil, err)
     }
     defer resp.Body.Close()
 
     respBody, _ := io.ReadAll(resp.Body)
     if resp.StatusCode != 200 {
-        return nil, fmt.Errorf("gemini error (status %d): %s", resp.StatusCode, string(respBody))
+        return nil, HTTPError("gemini", resp.StatusCode, respBody, nil)
     }
 
     var gResp geminiResponse
@@ -257,7 +257,7 @@ func (p *GeminiProvider) Complete(ctx context.Context, req CompletionRequest) (*
         return nil, fmt.Errorf("gemini parse: %w", err)
     }
     if gResp.Error != nil {
-        return nil, fmt.Errorf("gemini: %s", gResp.Error.Message)
+        return nil, Classify(nil, 400, gResp.Error.Message, "gemini")
     }
 
     result := &CompletionResponse{
@@ -339,12 +339,11 @@ func (p *GeminiProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
 
         resp, err := p.client.Do(httpReq)
         if err != nil {
-            // Ignore context canceled - normal saat user kirim message baru
             errMsg := err.Error()
-            if !strings.Contains(errMsg, "context canceled") {
-                out <- StreamToken{Done: true, Error: fmt.Errorf("gemini http: %w", err)}
-            } else {
+            if strings.Contains(errMsg, "context canceled") {
                 out <- StreamToken{Done: true}
+            } else {
+                out <- StreamToken{Done: true, Error: HTTPError("gemini", 0, nil, err)}
             }
             return
         }
@@ -352,7 +351,7 @@ func (p *GeminiProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
 
         if resp.StatusCode != 200 {
             respBody, _ := io.ReadAll(resp.Body)
-            out <- StreamToken{Done: true, Error: fmt.Errorf("gemini error %d: %s", resp.StatusCode, string(respBody))}
+            out <- StreamToken{Done: true, Error: HTTPError("gemini", resp.StatusCode, respBody, nil)}
             return
         }
 
@@ -377,7 +376,7 @@ func (p *GeminiProvider) Stream(ctx context.Context, req CompletionRequest) (<-c
             if chunk.Error != nil {
                 if !doneSent {
                     doneSent = true
-                    out <- StreamToken{Done: true, Error: fmt.Errorf("gemini: %s", chunk.Error.Message)}
+                    out <- StreamToken{Done: true, Error: Classify(nil, 400, chunk.Error.Message, "gemini")}
                 }
                 return
             }

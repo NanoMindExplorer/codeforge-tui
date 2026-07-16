@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
-[![Version](https://img.shields.io/badge/version-v1.0.0-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
+[![Version](https://img.shields.io/badge/version-v1.1.0-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v1.0.0` |
+| **Version** | `v1.1.0` |
 
 CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
@@ -20,7 +20,7 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 ## Grok 4.5 parity
 
-CodeForge **v1.0.0** is a **Grok Build TUI–compatible** coding agent: block scrollback, design-plan mode, permissions/hooks, sessions, and **ACP** for IDEs.
+CodeForge **v1.1.0** is a **Grok Build TUI–compatible** coding agent with **Grok 4.5** (xAI) as a first-class model, full Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …), plus ACP for IDEs.
 
 → Roadmap: **[docs/GROK_PARITY_ROADMAP.md](./docs/GROK_PARITY_ROADMAP.md)** · Dogfood: **[docs/DOGFOOD.md](./docs/DOGFOOD.md)** · ACP: **[docs/ACP.md](./docs/ACP.md)**
 
@@ -66,7 +66,7 @@ CodeForge **v1.0.0** is a **Grok Build TUI–compatible** coding agent: block sc
 | **Diff pane** | Rich unified diffs: gutters, `+N/-M` badges, multi-file tabs, pending badge. |
 | **Files pane** | Live project listing, AI “touched” highlights, optional git status glyphs. |
 | **Workflow** | `Ctrl+K` fuzzy palette · `@file` attachments · persistent **sessions** · `/undo` checkpoints · toasts. |
-| **Providers** | **Gemini** · **Claude** · **OpenAI-compatible** · **Ollama** (local/offline). |
+| **Providers** | **Grok 4.5 (xAI)** · Gemini · Claude · OpenAI-compatible · Ollama. |
 | **GitHub** | **`gh` / token**: PRs, issues, comments, reviews, diffs, **CI babysit**, push/pull — slash commands + agent `github` tool. |
 | **Surgical edits** | **`search_replace`** + **`apply_patch`** (Plan-staged) preferred over full-file rewrites. |
 | **Monorepo** | Multi-root workspace (`workspace.extra_roots`) + smart ignores / secret file skips. |
@@ -146,36 +146,34 @@ Set **at least one** environment variable before a productive session.
 
 | Provider | Environment | Notes |
 |----------|-------------|--------|
-| **Gemini** (default when set) | `GEMINI_API_KEY` | Free key: [Google AI Studio](https://aistudio.google.com/apikey) · default model `gemini-2.5-flash` |
-| **Claude** | `ANTHROPIC_API_KEY` | Default model `claude-sonnet-4-20250514` |
-| **OpenAI / compatible** | `OPENAI_API_KEY` | Optional `OPENAI_BASE_URL` (Groq, Together, Azure-style gateways, etc.) · default `gpt-4o-mini` |
-| **Ollama** (local) | — | Auto-registers if `ollama serve` is reachable · `OLLAMA_HOST`, `OLLAMA_MODEL` |
+| **Grok 4.5 (xAI)** | `XAI_API_KEY` or `GROK_API_KEY` | Preferred when set · model `grok-4.5` · [console.x.ai](https://console.x.ai/) · optional `XAI_BASE_URL` |
+| **Gemini** | `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) · `gemini-2.5-flash` |
+| **Claude** | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| **OpenAI / compatible** | `OPENAI_API_KEY` | Optional `OPENAI_BASE_URL` · `gpt-4o-mini` |
+| **Ollama** (local) | — | Auto if `ollama serve` · `OLLAMA_HOST`, `OLLAMA_MODEL` |
 
 Examples:
 
 ```bash
-# Gemini (recommended free start)
+# Grok 4.5 (recommended for agentic coding)
+export XAI_API_KEY="xai-..."
+export GROK_MODEL="grok-4.5"   # optional override
+
+# Gemini
 export GEMINI_API_KEY="AIzaSy..."
 
 # Claude
 export ANTHROPIC_API_KEY="sk-ant-..."
 
-# OpenAI-compatible endpoint
+# OpenAI-compatible
 export OPENAI_API_KEY="sk-..."
 export OPENAI_BASE_URL="https://api.openai.com/v1"
-
-# Local Ollama
-ollama pull llama3.2
-export OLLAMA_MODEL="llama3.2"
-# optional: export OLLAMA_HOST="http://127.0.0.1:11434"
 ```
 
-Persist in your shell profile (`~/.bashrc`, `~/.zshrc`) as needed.
+- `/provider` — list / switch (`grok`, `gemini`, `claude`, `openai`, `ollama`)
+- `/model` — e.g. `/model grok-4.5`
 
-Inside CodeForge you can still switch with:
-
-- `/provider` — list / switch (`gemini`, `claude`, `openai`, `ollama`)
-- `/model` — list / switch model IDs for the current provider
+Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …) are registered — see [docs/GROK_TOOLS_AND_MODEL.md](./docs/GROK_TOOLS_AND_MODEL.md).
 
 ---
 
@@ -729,6 +727,7 @@ CODEFORGE_THEME=auto codeforge
 
 | Variable | Purpose |
 |----------|---------|
+| `XAI_API_KEY` / `GROK_API_KEY` | xAI Grok 4.5 (preferred) |
 | `GEMINI_API_KEY` | Google Gemini |
 | `ANTHROPIC_API_KEY` | Anthropic Claude |
 | `OPENAI_API_KEY` | OpenAI or compatible API |

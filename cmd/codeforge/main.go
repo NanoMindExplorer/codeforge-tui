@@ -26,7 +26,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "1.0.0"
+	ProjectVersion = "1.1.0"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -369,7 +369,8 @@ func runSessionCLI(args []string) int {
 }
 
 func needsWizardQuick() bool {
-	if os.Getenv("GEMINI_API_KEY") != "" || os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("OPENAI_API_KEY") != "" {
+	if os.Getenv("XAI_API_KEY") != "" || os.Getenv("GROK_API_KEY") != "" ||
+		os.Getenv("GEMINI_API_KEY") != "" || os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("OPENAI_API_KEY") != "" {
 		return false
 	}
 	return true
@@ -390,15 +391,19 @@ func runWizard() {
 			fmt.Printf("   ○ %s — set %s\n", name, env)
 		}
 	}
+	show("Grok 4.5 (xAI)", "XAI_API_KEY")
 	show("Gemini", "GEMINI_API_KEY")
 	show("Claude", "ANTHROPIC_API_KEY")
 	show("OpenAI", "OPENAI_API_KEY")
 	show("GitHub token", "GITHUB_TOKEN")
-	fmt.Println("   Get Gemini: https://aistudio.google.com/apikey")
-	fmt.Print("   Enter (or paste GEMINI key): ")
+	fmt.Println("   Grok: https://console.x.ai/  ·  Gemini: https://aistudio.google.com/apikey")
+	fmt.Print("   Enter (paste XAI_ or GEMINI key): ")
 	line, _ := r.ReadString('\n')
 	line = strings.TrimSpace(line)
-	if strings.HasPrefix(line, "AIza") || len(line) > 20 {
+	if strings.HasPrefix(line, "xai-") || strings.HasPrefix(line, "xai_") {
+		_ = os.Setenv("XAI_API_KEY", line)
+		fmt.Println("   ✓ XAI_API_KEY set for this session (Grok 4.5)")
+	} else if strings.HasPrefix(line, "AIza") || len(line) > 20 {
 		_ = os.Setenv("GEMINI_API_KEY", line)
 		fmt.Println("   ✓ GEMINI_API_KEY set for this session")
 	}
@@ -441,8 +446,10 @@ TUI flags:
 %s
 %s
 Env:
+  XAI_API_KEY / GROK_API_KEY   Grok 4.5 (preferred when set)
   GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY
   GITHUB_TOKEN / GH_TOKEN
+  BRAVE_API_KEY                optional richer web_search
   CODEFORGE_SESSIONS_DIR   shared session storage (SSH/sync)
   CODEFORGE_PLUGIN_DIR     extra plugins path
   CODEFORGE_TELEMETRY=1    opt-in local telemetry

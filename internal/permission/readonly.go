@@ -4,16 +4,24 @@ import "strings"
 
 // Read-only tools auto-approve in every mode (unless deny/ask rule or hook).
 var readOnlyTools = map[string]bool{
-	"read_file":        true,
-	"list_dir":         true,
-	"grep_search":      true,
-	"codebase_search":  true,
-	"diagnostics":      true,
-	"fetch_url":        true,
-	"write_plan":       true, // plan file is design-mode exception; still auto at perm layer
-	"exit_plan_mode":   true,
-	"enter_plan_mode":  true,
-	"research":         true,
+	"read_file":             true,
+	"list_dir":              true,
+	"list_directory":        true, // Grok alias
+	"grep_search":           true,
+	"grep":                  true, // Grok alias
+	"codebase_search":       true,
+	"diagnostics":           true,
+	"fetch_url":             true,
+	"web_fetch":             true, // Grok alias
+	"web_search":            true,
+	"write_plan":            true,
+	"exit_plan_mode":        true,
+	"enter_plan_mode":       true,
+	"research":              true,
+	"memory_search":         true,
+	"todo_write":            true, // Grok treats as soft state
+	"ask_user_question":     true,
+	"spawn_subagent":        true, // gated by subagent mode internally
 }
 
 // IsReadOnlyTool reports whether the tool is auto-approved by default.

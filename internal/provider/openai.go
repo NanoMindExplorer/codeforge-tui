@@ -14,13 +14,19 @@ import (
 )
 
 // OpenAIProvider implements OpenAI-compatible chat completions
-// (OpenAI, Azure OpenAI, Groq, Together, etc. via endpoint override).
+// (OpenAI, Azure OpenAI, xAI Grok, Groq, Together, etc. via endpoint override).
 type OpenAIProvider struct {
 	apiKey   string
 	model    string
 	endpoint string // default https://api.openai.com/v1
 	client   *http.Client
 	name     string
+	// models overrides the catalog when non-nil (e.g. Grok).
+	models []ModelInfo
+}
+
+func defaultHTTPClient() *http.Client {
+	return &http.Client{Timeout: 180 * time.Second}
 }
 
 func NewOpenAIProvider(apiKey, defaultModel string) *OpenAIProvider {
@@ -39,7 +45,7 @@ func NewOpenAIProvider(apiKey, defaultModel string) *OpenAIProvider {
 		apiKey:   apiKey,
 		model:    defaultModel,
 		endpoint: endpoint,
-		client:   &http.Client{Timeout: 180 * time.Second},
+		client:   defaultHTTPClient(),
 		name:     "openai",
 	}
 }
@@ -56,6 +62,9 @@ func (p *OpenAIProvider) SetModel(id string) error {
 }
 
 func (p *OpenAIProvider) Models() []ModelInfo {
+	if len(p.models) > 0 {
+		return p.models
+	}
 	return []ModelInfo{
 		{ID: "gpt-4o", Name: "GPT-4o", ContextWindow: 128000, InputCost: 2.5, OutputCost: 10.0},
 		{ID: "gpt-4o-mini", Name: "GPT-4o Mini", ContextWindow: 128000, InputCost: 0.15, OutputCost: 0.60},
@@ -65,6 +74,9 @@ func (p *OpenAIProvider) Models() []ModelInfo {
 
 func (p *OpenAIProvider) ValidateConfig() error {
 	if p.apiKey == "" {
+		if p.name == "grok" {
+			return fmt.Errorf("XAI_API_KEY / GROK_API_KEY not set")
+		}
 		return fmt.Errorf("OPENAI_API_KEY not set")
 	}
 	return nil

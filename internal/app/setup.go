@@ -2,10 +2,12 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/codeforge/tui/internal/agent"
 	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/git"
 	"github.com/codeforge/tui/internal/index"
@@ -74,9 +76,13 @@ func Bootstrap(opt Options) (*Runtime, error) {
 	if _, err := provReg.Current(); err != nil {
 		_ = provReg.Register(provider.NewClaudeProvider("", "claude-sonnet-4-20250514"))
 	}
-	if os.Getenv("GEMINI_API_KEY") != "" {
+	// Provider preference: explicit env keys win, then config default
+	switch {
+	case os.Getenv("XAI_API_KEY") != "" || os.Getenv("GROK_API_KEY") != "":
+		_ = provReg.Switch("grok")
+	case os.Getenv("GEMINI_API_KEY") != "":
 		_ = provReg.Switch("gemini")
-	} else if cfg.DefaultProvider != "" {
+	case cfg.DefaultProvider != "":
 		_ = provReg.Switch(cfg.DefaultProvider)
 	}
 
@@ -116,6 +122,33 @@ func Bootstrap(opt Options) (*Runtime, error) {
 
 	toolReg := tool.NewRegistry(workdir)
 	toolReg.Register(&research.Tool{WorkDir: workdir, Parent: toolReg, ProvReg: provReg})
+	// Wire Grok-compatible spawn_subagent (avoids tool↔agent import cycle)
+	tool.SubagentParentRegistry = toolReg
+	tool.SubagentRunner = func(ctx context.Context, workdir, system string, msgs []provider.Message, tools *tool.Registry, maxIter int, onEvent func(tool.SubagentEvent)) {
+		p, err := provReg.Current()
+		if err != nil {
+			onEvent(tool.SubagentEvent{Kind: "error", Error: err.Error()})
+			return
+		}
+		ch := agent.Run(ctx, agent.Config{
+			Provider: p, Tools: tools, System: system,
+			MaxTokens: 2048, MaxIterations: maxIter,
+		}, msgs)
+		for ev := range ch {
+			switch ev.Kind {
+			case agent.EventText:
+				onEvent(tool.SubagentEvent{Kind: "text", Text: ev.Text})
+			case agent.EventToolCall:
+				onEvent(tool.SubagentEvent{Kind: "tool_call", ToolName: ev.ToolName})
+			case agent.EventError:
+				if ev.Error != nil {
+					onEvent(tool.SubagentEvent{Kind: "error", Error: ev.Error.Error()})
+				}
+			case agent.EventDone:
+				onEvent(tool.SubagentEvent{Kind: "done"})
+			}
+		}
+	}
 
 	// Write mode
 	if sw := toolReg.GetStagedWriter(); sw != nil {
@@ -183,6 +216,12 @@ func Bootstrap(opt Options) (*Runtime, error) {
 }
 
 func registerProviders(reg *provider.Registry, logf func(string, ...any)) {
+	// Prefer Grok 4.5 when XAI key is present
+	if k := os.Getenv("XAI_API_KEY"); k != "" || os.Getenv("GROK_API_KEY") != "" {
+		_ = reg.Register(provider.NewGrokProvider(k, "grok-4.5"))
+		logf("✓ Grok (xAI) registered — model grok-4.5\n")
+		_ = reg.Switch("grok")
+	}
 	if k := os.Getenv("GEMINI_API_KEY"); k != "" {
 		_ = reg.Register(provider.NewGeminiProvider(k, "gemini-2.5-flash"))
 		logf("✓ Gemini registered\n")

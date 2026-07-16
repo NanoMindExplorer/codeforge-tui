@@ -125,11 +125,23 @@ type PermissionRule struct {
 
 func Default() *Config {
     return &Config{
-        DefaultProvider: "gemini",
+        DefaultProvider: "grok",
         Theme:           "groknight",
         DiffMode:        "unified",
         NoMotion:        false,
         Providers: map[string]Provider{
+            "grok": {
+                Enabled:      true,
+                Type:         "xai",
+                APIKey:       "",
+                DefaultModel: "grok-4.5",
+                Capabilities: ProviderCapabilities{
+                    Streaming:  true,
+                    ToolUse:    true,
+                    Vision:     true,
+                    MaxContext: 500000,
+                },
+            },
             "gemini": {
                 Enabled:      true,
                 Type:         "google",

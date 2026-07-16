@@ -1508,6 +1508,19 @@ func (m *Model) handleAgentEvent(ev agent.Event) []tea.Cmd {
 		}
 		cmds = append(cmds, m.persistSessionCmd())
 	}
+	if ev.Kind == agent.EventToolResult && (ev.ToolName == "ask_user_question" || ev.ToolName == "ask_user") {
+		if q := tool.ConsumePendingAsk(); q != nil {
+			msg := "❓ " + q.Question
+			if len(q.Options) > 0 {
+				msg += "\n"
+				for i, o := range q.Options {
+					msg += fmt.Sprintf("  %d) %s\n", i+1, o)
+				}
+			}
+			m.chat.AddSystemMessage(msg)
+			m.toast = components.NewToast("Agent is waiting for your answer", "info", 4*time.Second)
+		}
+	}
 	if ev.Kind == agent.EventToolResult && ev.ToolDiff != "" {
 		nd, dc := m.diff.Update(DiffUpdateMsg{Content: ev.ToolDiff, Pending: m.sessionMode == tool.SessionBuild})
 		m.diff = nd.(DiffModel)

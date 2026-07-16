@@ -477,11 +477,17 @@ func NewRegistry(workDir string) *Registry {
     ensureBackgroundWire()
     r := &Registry{tools: make(map[string]Tool)}
     staged := NewStagedWriter(workDir)
-    r.Register(&FileReader{WorkDir: workDir})
+    reader := &FileReader{WorkDir: workDir}
+    grep := &GrepSearch{WorkDir: workDir}
+    lister := &DirLister{WorkDir: workDir}
+    shell := &ShellExec{WorkDir: workDir}
+    fetch := &URLFetch{}
+    sr := &SearchReplace{WorkDir: workDir, Staged: staged}
+
+    r.Register(reader)
     // StagedWriter gates writes: BUILD=stage, YOLO=immediate, DESIGN=plan.md only
     r.Register(staged)
-    // Surgical edits (prefer over full-file write)
-    r.Register(&SearchReplace{WorkDir: workDir, Staged: staged})
+    r.Register(sr)
     r.Register(&ApplyPatch{WorkDir: workDir, Staged: staged})
     // Design plan tools (Phase 5)
     r.Register(&WritePlan{Staged: staged})
@@ -489,12 +495,24 @@ func NewRegistry(workDir string) *Registry {
     r.Register(&EnterPlanMode{Staged: staged})
     // Phase 7
     r.Register(&TodoWrite{})
-    r.Register(&DirLister{WorkDir: workDir})
-    r.Register(&GrepSearch{WorkDir: workDir})
+    r.Register(lister)
+    r.Register(grep)
     r.Register(&CodebaseSearch{WorkDir: workDir})
     r.Register(&Diagnostics{WorkDir: workDir})
-    r.Register(&URLFetch{})
-    r.Register(&ShellExec{WorkDir: workDir})
+    r.Register(fetch)
+    r.Register(shell)
+    // Grok 4.5 tool surface (Phase G2)
+    r.Register(&WebSearch{})
+    r.Register(&MemorySearch{})
+    r.Register(&MemoryWrite{})
+    r.Register(&SpawnSubagent{WorkDir: workDir})
+    r.Register(&AskUserQuestion{})
+    // Grok-compatible name aliases
+    r.Register(&Alias{AliasName: "grep", Inner: grep})
+    r.Register(&Alias{AliasName: "run_terminal_command", Inner: shell})
+    r.Register(&Alias{AliasName: "web_fetch", Inner: fetch})
+    r.Register(&Alias{AliasName: "list_directory", Inner: lister})
+    r.Register(&Alias{AliasName: "edit_file", Inner: sr})
     // GitHub integration (gh CLI + GITHUB_TOKEN REST)
     r.Register(&GitHubTool{Client: defaultGitHubClient(workDir)})
     return r

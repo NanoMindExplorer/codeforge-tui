@@ -110,6 +110,17 @@ type PermissionsConfig struct {
     RequireConfirmWrite bool `mapstructure:"require_confirm_write"`
     RequireConfirmShell bool `mapstructure:"require_confirm_shell"`
     RequireConfirmPush  bool `mapstructure:"require_confirm_push"`
+    // Mode: default | plan | always_approve | dont_ask (Phase 6)
+    Mode string `mapstructure:"mode"`
+    // Rules is the allow/deny/ask list.
+    Rules []PermissionRule `mapstructure:"rules"`
+}
+
+// PermissionRule is one allow/deny/ask entry.
+type PermissionRule struct {
+    Tool    string `mapstructure:"tool" yaml:"tool"`
+    Pattern string `mapstructure:"pattern" yaml:"pattern"`
+    Effect  string `mapstructure:"effect" yaml:"effect"` // deny | ask | allow
 }
 
 func Default() *Config {
@@ -165,6 +176,8 @@ func Default() *Config {
             RequireConfirmWrite: true,
             RequireConfirmShell: true,
             RequireConfirmPush:  true,
+            Mode:                "default",
+            Rules:               nil,
         },
         Workspace: WorkspaceConfig{
             ExtraRoots: nil,
@@ -275,9 +288,17 @@ git:
   branch_prefix: ai/
 
 permissions:
+  mode: default   # default | plan | always_approve | dont_ask
   require_confirm_write: true
   require_confirm_shell: true
   require_confirm_push: true
+  # rules:
+  #   - tool: run_command
+  #     pattern: "rm -rf *"
+  #     effect: deny
+  #   - tool: run_command
+  #     pattern: "go test *"
+  #     effect: allow
 `
     return os.WriteFile(examplePath, []byte(content), 0644)
 }

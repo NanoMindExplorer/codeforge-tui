@@ -49,6 +49,13 @@ type Event struct {
 	Error error
 }
 
+// Authorizer gates tool execution (Phase 6 permissions).
+// Return nil to allow; non-nil error is shown to the model as a tool failure.
+type Authorizer interface {
+	Authorize(ctx context.Context, toolName, input string) error
+	NotifyPost(ctx context.Context, toolName, input, output string, success bool)
+}
+
 type Config struct {
 	Provider      provider.Provider
 	Tools         *tool.Registry
@@ -56,6 +63,8 @@ type Config struct {
 	MaxTokens     int
 	Temperature   float64
 	MaxIterations int
+	// Auth optional permission/hooks gate
+	Auth Authorizer
 }
 
 func Run(ctx context.Context, cfg Config, history []provider.Message) <-chan Event {
@@ -128,6 +137,27 @@ func runLoop(ctx context.Context, cfg Config, history []provider.Message, out ch
 		for _, call := range resp.ToolCalls {
 			out <- Event{Kind: EventToolCall, ToolName: call.Name, ToolInput: call.Input}
 
+			// Permission / hooks gate before execution
+			if cfg.Auth != nil {
+				if err := cfg.Auth.Authorize(ctx, call.Name, call.Input); err != nil {
+					msg := err.Error()
+					out <- Event{
+						Kind:        EventToolResult,
+						ToolName:    call.Name,
+						ToolOutput:  "🚫 " + msg,
+						ToolSuccess: false,
+					}
+					messages = append(messages, provider.Message{
+						Role:       provider.RoleTool,
+						Content:    "Permission denied: " + msg,
+						ToolCallID: call.ID,
+						ToolName:   call.Name,
+						IsError:    true,
+					})
+					continue
+				}
+			}
+
 			result := executeTool(ctx, cfg.Tools, call, func(chunk string) {
 				if chunk == "" {
 					return
@@ -137,6 +167,10 @@ func runLoop(ctx context.Context, cfg Config, history []provider.Message, out ch
 				case <-ctx.Done():
 				}
 			})
+
+			if cfg.Auth != nil {
+				cfg.Auth.NotifyPost(ctx, call.Name, call.Input, result.summary, result.success)
+			}
 
 			out <- Event{
 				Kind:        EventToolResult,

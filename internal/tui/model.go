@@ -17,8 +17,10 @@ import (
 	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/git"
 	gh "github.com/codeforge/tui/internal/github"
+	"github.com/codeforge/tui/internal/hooks"
 	"github.com/codeforge/tui/internal/index"
 	"github.com/codeforge/tui/internal/keymap"
+	"github.com/codeforge/tui/internal/permission"
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/session"
@@ -31,6 +33,7 @@ import (
 	"github.com/codeforge/tui/internal/ui/filepicker"
 	"github.com/codeforge/tui/internal/ui/markdown"
 	"github.com/codeforge/tui/internal/ui/palette"
+	"github.com/codeforge/tui/internal/ui/permask"
 	"github.com/codeforge/tui/internal/ui/planreview"
 	"github.com/codeforge/tui/internal/ui/review"
 )
@@ -93,6 +96,30 @@ type Model struct {
 	borderPhase float64
 	lastTokenAt time.Time
 	tokenWindow int
+
+	// Phase 6 permissions
+	perm     *permission.Engine
+	hooks    *hooks.Runner
+	permAsk  permask.Model
+	permReq  chan permAskRequest // agent → UI
+	permWait *permAskRequest     // active request awaiting y/n
+}
+
+// permAskRequest is a blocking permission prompt from the agent goroutine.
+type permAskRequest struct {
+	Tool, Input, Reason string
+	Dangerous           bool
+	Reply               chan permAskReply
+}
+
+type permAskReply struct {
+	Allow  bool
+	Always bool
+}
+
+// PermAskMsg opens the permission modal (from listenPermAsk cmd).
+type PermAskMsg struct {
+	Req permAskRequest
 }
 
 // AutoThemeTickMsg re-checks system appearance when theme=auto.
@@ -119,6 +146,7 @@ const (
 	ModeSessionPick
 	ModeRewindPick
 	ModePlanReview
+	ModePermAsk
 )
 
 func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry, repo *git.Repo, workdir string) Model {
@@ -128,6 +156,30 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 	}
 	ghc := gh.New(workdir)
 	chat := NewChatModel(provReg, toolReg, repo, workdir)
+
+	// Phase 6: permissions + hooks
+	permEng := permission.FromConfig(cfg, workdir)
+	hookRunner := hooks.Load(workdir)
+	askCh := make(chan permAskRequest, 1)
+	permEng.Ask = func(ctx context.Context, toolName, input, reason string, dangerous bool) (bool, bool, error) {
+		reply := make(chan permAskReply, 1)
+		req := permAskRequest{
+			Tool: toolName, Input: input, Reason: reason,
+			Dangerous: dangerous, Reply: reply,
+		}
+		select {
+		case askCh <- req:
+		case <-ctx.Done():
+			return false, false, ctx.Err()
+		}
+		select {
+		case r := <-reply:
+			return r.Allow, r.Always, nil
+		case <-ctx.Done():
+			return false, false, ctx.Err()
+		}
+	}
+	chat.Auth = permEng
 	// Project rules
 	rb := rules.Get()
 	if rb != nil && rb.Text != "" {
@@ -172,13 +224,38 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		session:     sess,
 		ghClient:    ghc,
 		vimMode:     vim,
+		perm:        permEng,
+		hooks:       hookRunner,
+		permAsk:     permask.New(),
+		permReq:     askCh,
 	}
 	// Wire plan.md path + BUILD write mode (staged)
 	m.syncWriteMode()
+	// Align permission mode with session YOLO if always_approve
+	if permEng != nil && permEng.GetMode() == permission.ModeAlwaysApprove {
+		m.sessionMode = tool.SessionYolo
+		m.syncWriteMode()
+	}
 	if rb != nil && len(rb.Paths) > 0 {
 		m.chat.AddSystemMessage(rb.Summary())
 	}
+	if hookRunner != nil && hookRunner.Count() > 0 {
+		m.chat.AddSystemMessage(fmt.Sprintf("Hooks: %d loaded", hookRunner.Count()))
+	}
 	return m
+}
+
+func listenPermAsk(ch <-chan permAskRequest) tea.Cmd {
+	return func() tea.Msg {
+		if ch == nil {
+			return nil
+		}
+		req, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return PermAskMsg{Req: req}
+	}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -186,6 +263,7 @@ func (m Model) Init() tea.Cmd {
 		m.chat.Init(),
 		m.context.Init(),
 		spinnerTick(),
+		listenPermAsk(m.permReq),
 		// Kick context pane live on start
 		func() tea.Msg {
 			return ContextUpdateMsg{Refresh: true}
@@ -249,6 +327,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, autoThemeTick())
 		}
 
+	case PermAskMsg:
+		m.permWait = &msg.Req
+		m.permAsk.Open(msg.Req.Tool, msg.Req.Input, msg.Req.Reason, msg.Req.Dangerous)
+		m.mode = ModePermAsk
+		m.focusPrompt = false
+		m.chat.BlurInput()
+		// keep listening for further asks after this one resolves
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -278,12 +365,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// ── Steal-Esc stack (Grok order) ─────────────
-		// Review → PlanReview → Theme → Resume → Rewind → Palette → File → Command → Slash
+		// Review → PlanReview → PermAsk → Theme → Resume → Rewind → Palette → File → Command → Slash
 		if m.mode == ModeReview {
 			return m.updateReview(msg)
 		}
 		if m.mode == ModePlanReview {
 			return m.updatePlanReview(msg)
+		}
+		if m.mode == ModePermAsk {
+			return m.updatePermAsk(msg)
 		}
 		if m.mode == ModeThemePick {
 			return m.updateThemePicker(msg)
@@ -852,6 +942,7 @@ func isImmediateSlash(cmd string) bool {
 		"/status", "/clear", "/quit", "/theme", "/compact-mode", "/vim-mode",
 		"/sessions", "/resume", "/new", "/fork", "/rewind", "/compact",
 		"/context", "/session-info", "/mode", "/plan", "/view-plan",
+		"/permissions", "/hooks",
 		"/undo", "/push", "/pull":
 		return true
 	default:
@@ -976,7 +1067,7 @@ func (m *Model) cycleSessionMode() {
 func (m *Model) setSessionMode(mode tool.SessionMode) {
 	m.sessionMode = mode
 	m.syncWriteMode()
-	label := mode.Label()
+	m.syncPermWithSession()
 	switch mode {
 	case tool.SessionDesign:
 		m.toast = components.NewToast("Mode: DESIGN — plan only", "info", 3*time.Second)
@@ -988,7 +1079,6 @@ func (m *Model) setSessionMode(mode tool.SessionMode) {
 		m.toast = components.NewToast("Mode: BUILD — staged writes", "info", 3*time.Second)
 		m.chat.AddSystemMessage("🛡 BUILD: write_file is staged for review before apply.")
 	}
-	_ = label
 }
 
 // syncWriteMode pushes session mode + plan path into the tool registry.
@@ -1007,6 +1097,58 @@ func (m *Model) syncWriteMode() {
 
 // legacy alias used by older call sites
 func (m *Model) toggleAgentMode() { m.cycleSessionMode() }
+
+func (m Model) updatePermAsk(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	reply := func(allow, always bool) (tea.Model, tea.Cmd) {
+		if m.permWait != nil && m.permWait.Reply != nil {
+			select {
+			case m.permWait.Reply <- permAskReply{Allow: allow, Always: always}:
+			default:
+			}
+		}
+		m.permWait = nil
+		m.permAsk.Close()
+		m.mode = ModeInsert
+		m.focusPrompt = true
+		m.chat.FocusInput()
+		return m, listenPermAsk(m.permReq)
+	}
+	switch msg.String() {
+	case "y", "Y":
+		return reply(true, false)
+	case "n", "N", "esc":
+		return reply(false, false)
+	case "a", "A":
+		if m.permAsk.Dangerous {
+			return reply(true, false)
+		}
+		return reply(true, true)
+	case "d", "D":
+		if m.permAsk.Dangerous {
+			return reply(false, false)
+		}
+		return reply(false, true)
+	}
+	return m, nil
+}
+
+// syncPermWithSession mirrors YOLO/DESIGN into permission engine mode.
+func (m *Model) syncPermWithSession() {
+	if m.perm == nil {
+		return
+	}
+	switch m.sessionMode {
+	case tool.SessionYolo:
+		m.perm.SetMode(permission.ModeAlwaysApprove)
+	case tool.SessionDesign:
+		m.perm.SetMode(permission.ModePlan)
+	default:
+		// keep config mode if default; don't force away from dont_ask
+		if m.perm.GetMode() == permission.ModeAlwaysApprove || m.perm.GetMode() == permission.ModePlan {
+			m.perm.SetMode(permission.ModeDefault)
+		}
+	}
+}
 
 func (m *Model) openPlanReview(summary string) {
 	content := ""
@@ -1401,6 +1543,14 @@ func (m Model) View() string {
 		m.planUI.Height = m.height - 1
 		return lipgloss.JoinVertical(lipgloss.Left,
 			m.planUI.View(),
+			m.status.ViewFooter(),
+		)
+	}
+	// ── Permission ask modal ──────────────────────────
+	if m.mode == ModePermAsk {
+		return lipgloss.JoinVertical(lipgloss.Left,
+			m.chat.ViewScrollback(),
+			m.permAsk.View(),
 			m.status.ViewFooter(),
 		)
 	}
@@ -1865,6 +2015,70 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 	case "view-plan", "show-plan", "plan-view":
 		m.openPlanReview("View plan")
 		// viewing only — if user approves from here, still OK
+
+	case "permissions", "perms":
+		if m.perm == nil {
+			m.chat.AddSystemMessage("Permission engine not available")
+			return nil
+		}
+		if len(args) == 0 {
+			m.chat.AddSystemMessage(m.perm.Summary() + "\n  /permissions mode <default|always_approve|dont_ask|plan>\n  /permissions allow <tool> [pattern]\n  /permissions deny <tool> [pattern]\n  /permissions clear-remember")
+			return nil
+		}
+		switch strings.ToLower(args[0]) {
+		case "mode":
+			if len(args) < 2 {
+				m.chat.AddSystemMessage("Current: " + string(m.perm.GetMode()))
+				return nil
+			}
+			m.perm.SetMode(permission.ParseMode(args[1]))
+			m.chat.AddSystemMessage("Permission mode → " + string(m.perm.GetMode()))
+		case "allow":
+			toolN := "*"
+			pat := "*"
+			if len(args) >= 2 {
+				toolN = args[1]
+			}
+			if len(args) >= 3 {
+				pat = strings.Join(args[2:], " ")
+			}
+			m.perm.AddRule(permission.Rule{Tool: toolN, Pattern: pat, Effect: permission.EffectAllow})
+			m.chat.AddSystemMessage(fmt.Sprintf("Added allow rule: %s %q", toolN, pat))
+		case "deny":
+			toolN := "*"
+			pat := "*"
+			if len(args) >= 2 {
+				toolN = args[1]
+			}
+			if len(args) >= 3 {
+				pat = strings.Join(args[2:], " ")
+			}
+			m.perm.AddRule(permission.Rule{Tool: toolN, Pattern: pat, Effect: permission.EffectDeny})
+			m.chat.AddSystemMessage(fmt.Sprintf("Added deny rule: %s %q", toolN, pat))
+		case "ask":
+			toolN := "run_command"
+			pat := "*"
+			if len(args) >= 2 {
+				toolN = args[1]
+			}
+			if len(args) >= 3 {
+				pat = strings.Join(args[2:], " ")
+			}
+			m.perm.AddRule(permission.Rule{Tool: toolN, Pattern: pat, Effect: permission.EffectAsk})
+			m.chat.AddSystemMessage(fmt.Sprintf("Added ask rule: %s %q", toolN, pat))
+		case "clear-remember", "clear":
+			m.perm.ClearRemembered()
+			m.chat.AddSystemMessage("Cleared remembered grants")
+		default:
+			m.chat.AddSystemMessage("Usage: /permissions [mode|allow|deny|ask|clear-remember]")
+		}
+
+	case "hooks":
+		if m.hooks == nil {
+			m.chat.AddSystemMessage("No hooks runner")
+			return nil
+		}
+		m.chat.AddSystemMessage(m.hooks.Summary())
 
 	case "sessions", "dashboard":
 		// list text view (picker is /resume)
@@ -2825,7 +3039,7 @@ var slashCommands = []string{
 	"/provider", "/model", "/mode", "/cost", "/budget", "/rules", "/index",
 	"/theme", "/compact-mode", "/vim-mode",
 	"/resume", "/new", "/fork", "/rewind", "/compact", "/context", "/session-info",
-	"/mode", "/plan", "/view-plan",
+	"/mode", "/plan", "/view-plan", "/permissions", "/hooks",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
 
@@ -2839,24 +3053,22 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge · Grok-parity Phase 5  ·  v0.9.4
+	return `CodeForge · Grok-parity Phase 6  ·  v0.9.5
 
 FOCUS
-  Tab            Prompt ↔ scrollback
-  Esc            Close menu / focus scrollback
-  2× Esc (800ms) Clear prompt · or open /rewind picker
-  Shift+Tab      BUILD → DESIGN → YOLO
+  Tab · Esc · 2×Esc · Shift+Tab (BUILD/DESIGN/YOLO)
 
-SESSION MODES
-  BUILD          Staged writes (review before apply)
-  DESIGN         Plan only — write_plan / exit_plan_mode
-  YOLO           Always-approve immediate writes
-  /plan [task]   Enter DESIGN (+ start planning)
-  /view-plan     Open plan approval UI
-  a / s / q      Approve · request changes · quit plan
+PERMISSIONS
+  Order: hooks → deny → ask → allow → remember → defaults
+  /permissions           Show mode & rules
+  /permissions deny run_command "rm *"
+  /permissions allow run_command "go test *"
+  /permissions mode dont_ask|always_approve|default
+  y/n/a/d                On ask modal (always remember)
+  /hooks                 List Pre/PostToolUse hooks
 
-SESSIONS
-  /resume /new /fork /rewind /compact /context
+SESSION / PLAN
+  /plan /view-plan /resume /new /fork /rewind /compact
 
 THEME
   /theme · /compact-mode · --minimal
@@ -2864,12 +3076,11 @@ THEME
 }
 
 func aboutText() string {
-	return `CodeForge TUI v0.9.4
+	return `CodeForge TUI v0.9.5
 Created by NanoMind — 2026 — Apache 2.0
 
-Phase 1–4: blocks, input, themes, sessions
-Phase 5: DESIGN plan mode + approval (a/s/q)
-  BUILD · DESIGN · YOLO  (Shift+Tab)
+Phase 1–5: blocks, input, themes, sessions, design plan
+Phase 6: permissions (allow/deny/ask) + hooks + remember
 See docs/GROK_PARITY_ROADMAP.md
 `
 }

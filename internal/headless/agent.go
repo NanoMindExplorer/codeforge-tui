@@ -12,6 +12,7 @@ import (
 
 	"github.com/codeforge/tui/internal/agent"
 	"github.com/codeforge/tui/internal/app"
+	"github.com/codeforge/tui/internal/permission"
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/session"
@@ -19,15 +20,17 @@ import (
 
 // Options for a headless agent run.
 type Options struct {
-	Task        string
-	JSON        bool
-	Act         bool
-	Plan        bool
-	MaxIter     int
-	Timeout     time.Duration
-	WorkDir     string
-	Quiet       bool
-	SystemExtra string
+	Task           string
+	JSON           bool
+	Act            bool
+	Plan           bool
+	AlwaysApprove  bool // YOLO / always_approve
+	DontAsk        bool // deny anything that would prompt
+	MaxIter        int
+	Timeout        time.Duration
+	WorkDir        string
+	Quiet          bool
+	SystemExtra    string
 }
 
 // Result is the structured outcome of a headless run.
@@ -105,12 +108,26 @@ Reply with a clear summary of what you did.`
 	ctx, cancel := context.WithTimeout(context.Background(), opt.Timeout)
 	defer cancel()
 
+	// Phase 6: permission gate (headless — no interactive ask)
+	eng := permission.FromConfig(rt.Cfg, rt.WorkDir)
+	eng.Headless = true
+	if opt.AlwaysApprove || opt.Act {
+		eng.SetMode(permission.ModeAlwaysApprove)
+	}
+	if opt.DontAsk {
+		eng.SetMode(permission.ModeDontAsk)
+	}
+	if opt.Plan {
+		eng.SetMode(permission.ModePlan)
+	}
+
 	ch := agent.Run(ctx, agent.Config{
 		Provider:      p,
 		Tools:         rt.ToolReg,
 		System:        sys,
 		MaxTokens:     4096,
 		MaxIterations: opt.MaxIter,
+		Auth:          eng,
 	}, msgs)
 
 	var (

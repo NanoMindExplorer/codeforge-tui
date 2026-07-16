@@ -57,6 +57,9 @@ type ChatModel struct {
 
 	// cancelFn cancels in-flight stream/agent (Grok Ctrl+C)
 	cancelFn context.CancelFunc
+
+	// Auth gates tool calls (Phase 6 permissions); optional.
+	Auth agent.Authorizer
 }
 
 func NewChatModel(provReg *provider.Registry, toolReg *tool.Registry, repo *git.Repo, workdir string) ChatModel {
@@ -79,9 +82,9 @@ func NewChatModel(provReg *provider.Registry, toolReg *tool.Registry, repo *git.
 		ta:          ta,
 		attachments: make(map[string]string),
 	}
-	c.store.AddSystem("CodeForge · block scrollback (Phase 1)  ·  type to chat  ·  / commands  ·  ? help")
+	c.store.AddSystem("CodeForge · Grok-parity  ·  type to chat  ·  / commands  ·  ? help")
 	c.store.AddSystem("Scrollback: j/k select · h/l fold · E expand-all · G follow  ·  Tab focus prompt")
-	c.store.AddSystem("Default write mode: PLAN. Theme: GrokNight.")
+	c.store.AddSystem("Modes: BUILD (staged) · DESIGN (plan) · YOLO  ·  Shift+Tab cycle")
 	return c
 }
 
@@ -235,6 +238,7 @@ func (c *ChatModel) SubmitAgent(task string) tea.Cmd {
 			Tools:     toolReg,
 			System:    c.systemWithRules(agentSystemPrompt),
 			MaxTokens: 4096,
+			Auth:      c.Auth,
 		}
 		ch := agent.Run(ctx, cfg, msgs)
 		first, ok := <-ch

@@ -25,7 +25,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "0.9.4"
+	ProjectVersion = "0.9.5"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -172,6 +172,12 @@ func runAgentCLI(args []string) int {
 		case "--act":
 			opt.Act = true
 			opt.Plan = false
+		case "--always-approve", "--yolo":
+			opt.AlwaysApprove = true
+			opt.Act = true
+			opt.Plan = false
+		case "--dont-ask":
+			opt.DontAsk = true
 		case "--quiet", "-q":
 			opt.Quiet = true
 		case "--workdir", "-C":
@@ -373,8 +379,10 @@ func agentUsage() string {
   echo "summarize README" | codeforge agent --json
 
   --json, -j       Machine-readable JSON result (exit 1 on failure)
-  --plan           Stage writes (Plan mode)
+  --plan           Design/plan permission mode + staged writes
   --act            Apply writes immediately (default)
+  --always-approve, --yolo  Bypass ask (deny rules still apply)
+  --dont-ask       Deny anything that would prompt (CI lockdown)
   --workdir, -C    Project directory
   --timeout SEC    Overall timeout (default 600)
   --max-iter N     Agent iterations (default 12)

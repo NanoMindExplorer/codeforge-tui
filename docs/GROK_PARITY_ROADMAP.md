@@ -2,10 +2,10 @@
 
 **Goal:** Make CodeForge feel and behave **1:1** with Grok Build TUI (Grok 4.5 class) in layout, interaction, session lifecycle, permissions, and agent surface — without becoming a closed fork of proprietary code.
 
-**Current baseline:** CodeForge **v0.9.4**  
-- Phase 1–5 shipped: blocks, input, themes, sessions, design plan mode  
+**Current baseline:** CodeForge **v0.9.5**  
+- Phase 1–6 shipped: blocks, input, themes, sessions, design plan, permissions/hooks  
 - GitHub, plugins, headless agent, rules, index, MCP  
-- **Not** full Grok parity yet (permissions matrix, ACP, sandbox, …)
+- **Not** full Grok parity yet (ACP, OS sandbox, full slash/TODO surface, …)
 
 **Reference:** Grok user-guide docs (`~/.grok/docs/user-guide/`) — theming, shortcuts, sessions, plan mode, permissions, agent ACP.
 
@@ -38,7 +38,7 @@ Phases are **sequential** where later ones depend on earlier UI foundations. Som
 | `@` | Path + line ranges + gitignore | Fuzzy file list | Medium |
 | Sessions | UUID dirs, resume picker, fork, rewind, compact | ✅ Phase 4 v2 layout | Small |
 | Plan mode | Read-only plan.md + approval UI | ✅ Phase 5 DESIGN/BUILD/YOLO | Small |
-| Permissions | allow/deny/ask + modes + hooks | Plan staging only | **Large** |
+| Permissions | allow/deny/ask + modes + hooks | ✅ Phase 6 | Small |
 | TODOs | Task badges in footer | None | Medium |
 | Thinking | Animated reasoning blocks | Spinner only | Medium |
 | ACP / IDE | `grok agent stdio` / serve | Headless `agent --json` only | **Large** |
@@ -219,9 +219,12 @@ Team (or you) can answer “done for v1.0 Grok-parity” with a yes/no checklist
 7. Optional: OS sandbox research spike (bubblewrap/seatbelt) — Could for Phase 6.1  
 
 ### Exit criteria
-- [ ] `deny run_command(rm)` hard-blocks  
-- [ ] `ask` prompts once; “always” remembered per project  
-- [ ] Plan design mode still cannot write code files  
+- [x] `deny run_command(rm)` hard-blocks  
+- [x] `ask` prompts once; “always” remembered per project  
+- [x] Plan design mode still cannot write code files  
+
+**Shipped in v0.9.5** — `internal/permission` engine + hooks, ask modal y/n/a/d,
+`/permissions` `/hooks`, headless `--always-approve` / `--dont-ask`.
 
 ---
 

@@ -47,6 +47,8 @@ func DefaultItems() []Item {
 		{"/mode", "BUILD / DESIGN / YOLO session mode"},
 		{"/plan", "Enter DESIGN plan mode"},
 		{"/view-plan", "Review design plan"},
+		{"/permissions", "Permission mode & rules"},
+		{"/hooks", "List loaded hooks"},
 		{"/cost", "Session token cost"},
 		{"/budget", "Budget status"},
 		{"/rules", "Show project rules"},

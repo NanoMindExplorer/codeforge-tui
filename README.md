@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
-[![Version](https://img.shields.io/badge/version-v0.9.4-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
+[![Version](https://img.shields.io/badge/version-v0.9.5-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v0.9.4` |
+| **Version** | `v0.9.5` |
 
 CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
@@ -20,7 +20,7 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 ## Grok 4.5 parity
 
-CodeForge **v0.9.4** ships Phases 1–5 of **Grok Build TUI–compatible** UX. The full plan to 1:1 parity:
+CodeForge **v0.9.5** ships Phases 1–6 of **Grok Build TUI–compatible** UX. The full plan to 1:1 parity:
 
 → **[docs/GROK_PARITY_ROADMAP.md](./docs/GROK_PARITY_ROADMAP.md)** (Phase 0–9)
 
@@ -128,7 +128,7 @@ codeforge --no-motion
 
 ```bash
 codeforge version
-# → codeforge 0.9.4
+# → codeforge 0.9.5
 ```
 
 ---
@@ -286,6 +286,8 @@ codeforge --skip-wizard --no-motion
 | `/resume` | Session picker · `/new` `/fork` `/rewind` `/compact` |
 | `Shift+Tab` | **BUILD → DESIGN → YOLO** session mode |
 | `/plan` | Enter DESIGN plan mode · `/view-plan` approval |
+| `/permissions` | allow/deny/ask rules · modes · remember |
+| `/hooks` | List PreToolUse / PostToolUse hooks |
 | `/compact-mode` | Tighter padding (outer_vpad=0) |
 
 ### Chat vs agent
@@ -760,9 +762,13 @@ ui:
 session:
   auto_compact_pct: 0.85   # auto /compact near context limit
 permissions:
-  require_confirm_write: true   # Plan-style staging when true
+  mode: default   # default | plan | always_approve | dont_ask
+  require_confirm_write: true
   require_confirm_shell: true
   require_confirm_push: true
+  # rules:
+  #   - { tool: run_command, pattern: "rm -rf *", effect: deny }
+  #   - { tool: run_command, pattern: "go test *", effect: allow }
 git:
   auto_commit: true
   commit_style: conventional

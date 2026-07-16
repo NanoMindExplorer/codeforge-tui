@@ -3790,7 +3790,7 @@ AGENT / IDE
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.9.2
+	return `CodeForge TUI v1.9.3
 Created by NanoMind — 2026 — Apache 2.0
 
 Grok Build TUI–compatible (Phases 1–9 + G1–G10 + W1–W4):

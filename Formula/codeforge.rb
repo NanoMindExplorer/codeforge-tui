@@ -4,7 +4,7 @@
 class Codeforge < Formula
   desc "Terminal AI coding companion (multi-provider agent + GitHub)"
   homepage "https://github.com/NanoMindExplorer/codeforge"
-  version "1.9.2"
+  version "1.9.3"
   license "Apache-2.0"
 
   on_macos do

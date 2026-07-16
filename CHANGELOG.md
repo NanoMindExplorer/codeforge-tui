@@ -5,6 +5,22 @@ All notable changes to CodeForge are documented here.
 Generate a release blurb: `make release-notes` or `bash scripts/release-notes.sh`.  
 Automated readiness: `make release-gate` (see [docs/RELEASE_GATE.md](./docs/RELEASE_GATE.md)).
 
+## [1.9.3] — 2026-07-16
+
+### Onboarding brand
+
+- First-run / welcome / CLI banner: **ASCII art “CodeForge”** with smaller **By NanoMindExplorer** byline.
+- Cyan bold title + dim byline on ANSI terminals (`NO_COLOR` / `TERM=dumb` → plain).
+
+### Release notes (1.9.0 → 1.9.3)
+
+Public-ready stack since last GitHub tag (`v1.8.1`):
+
+- Release automation, `make release-gate`, dogfood harness  
+- Multi-provider onboarding + priority resolution  
+- Friendly provider error UX (no JSON/stack dumps)  
+- Packaging matrix, Termux scripts, `/doctor`
+
 ## [1.9.2] — 2026-07-16
 
 ### Provider error UX (friendly, never stack dumps)

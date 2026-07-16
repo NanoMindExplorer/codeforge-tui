@@ -21,7 +21,11 @@ var readOnlyTools = map[string]bool{
 	"memory_search":         true,
 	"todo_write":            true, // Grok treats as soft state
 	"ask_user_question":     true,
+	"ask_user":              true, // Grok alias
 	"spawn_subagent":        true, // gated by subagent mode internally
+	"glob_file_search":      true,
+	"glob":                  true,
+	"find_files":            true,
 }
 
 // IsReadOnlyTool reports whether the tool is auto-approved by default.

@@ -51,6 +51,7 @@ func DefaultItems() []Item {
 		{"/hooks", "List loaded hooks"},
 		{"/todos", "Task list (footer badge)"},
 		{"/tasks", "Background shell jobs"},
+		{"/memory", "Cross-session notes (list/add/search)"},
 		{"/settings", "UI settings panel"},
 		{"/copy", "Copy selected block"},
 		{"/cost", "Session token cost"},

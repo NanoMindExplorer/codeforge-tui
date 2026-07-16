@@ -31,9 +31,11 @@ func NewContextModel(workdir string) ContextModel {
 	c := ContextModel{
 		workdir: workdir,
 		tools: []string{
-			"read_file", "write_file", "search_replace", "apply_patch",
-			"list_dir", "grep_search", "codebase_search", "diagnostics",
-			"fetch_url", "research", "run_command", "github",
+			"read_file", "write_file", "search_replace", "edit_file",
+			"list_dir", "glob_file_search", "grep", "codebase_search",
+			"run_terminal_command", "web_search", "web_fetch",
+			"memory_search", "memory_write", "spawn_subagent",
+			"ask_user_question", "todo_write", "diagnostics", "github",
 		},
 	}
 	c.RefreshFiles(nil)

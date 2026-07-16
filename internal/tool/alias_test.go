@@ -7,7 +7,10 @@ import (
 
 func TestGrokAliasesRegistered(t *testing.T) {
 	r := NewRegistry(t.TempDir())
-	aliases := []string{"grep", "run_terminal_command", "web_fetch", "list_directory", "edit_file"}
+	aliases := []string{
+		"grep", "run_terminal_command", "web_fetch", "list_directory", "edit_file",
+		"glob", "find_files", "ask_user",
+	}
 	for _, a := range aliases {
 		tt, ok := r.Get(a)
 		if !ok {

@@ -186,3 +186,50 @@ func memoryDir() (string, error) {
 	}
 	return dir, nil
 }
+
+// ListMemoryRecent returns the last n note texts (newest first) for /memory list.
+func ListMemoryRecent(n int) ([]string, error) {
+	if n <= 0 {
+		n = 10
+	}
+	dir, err := memoryDir()
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, "notes.jsonl")
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+	var all []string
+	sc := bufio.NewScanner(f)
+	buf := make([]byte, 0, 64*1024)
+	sc.Buffer(buf, 1024*1024)
+	for sc.Scan() {
+		line := sc.Text()
+		var note struct {
+			Text string    `json:"text"`
+			At   time.Time `json:"at"`
+			Tags string    `json:"tags"`
+		}
+		if json.Unmarshal([]byte(line), &note) == nil && note.Text != "" {
+			tag := ""
+			if note.Tags != "" {
+				tag = " [" + note.Tags + "]"
+			}
+			all = append(all, fmt.Sprintf("%s%s — %s", note.At.Format("2006-01-02"), tag, note.Text))
+		} else {
+			all = append(all, line)
+		}
+	}
+	// newest last in file → reverse take n
+	out := make([]string, 0, n)
+	for i := len(all) - 1; i >= 0 && len(out) < n; i-- {
+		out = append(out, all[i])
+	}
+	return out, nil
+}

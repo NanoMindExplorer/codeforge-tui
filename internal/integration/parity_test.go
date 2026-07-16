@@ -64,7 +64,8 @@ func TestToolsRegisterPhaseStack(t *testing.T) {
 		"write_plan", "exit_plan_mode", "todo_write",
 		// Grok 4.5 surface
 		"web_search", "web_fetch", "grep", "run_terminal_command",
-		"memory_search", "spawn_subagent", "ask_user_question",
+		"memory_search", "memory_write", "spawn_subagent", "ask_user_question",
+		"glob_file_search", "glob", "find_files", "ask_user",
 	}
 	for _, n := range need {
 		if _, ok := reg.Get(n); !ok {

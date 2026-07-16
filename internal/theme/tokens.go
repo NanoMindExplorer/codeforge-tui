@@ -614,22 +614,34 @@ func ToolIcon(name string) string {
 		return "◇"
 	case "write_file":
 		return "◆"
-	case "run_command":
+	case "run_command", "run_terminal_command":
 		return "▶"
-	case "grep_search", "codebase_search":
+	case "grep_search", "grep", "codebase_search":
 		return "◈"
-	case "list_dir":
+	case "glob_file_search", "glob", "find_files":
+		return "⬡"
+	case "list_dir", "list_directory":
 		return "▣"
 	case "github":
 		return "⌘"
-	case "search_replace", "apply_patch":
+	case "search_replace", "edit_file", "apply_patch":
 		return "▤"
 	case "diagnostics":
 		return "◎"
-	case "research":
+	case "research", "web_search":
 		return "◉"
-	case "fetch_url":
+	case "fetch_url", "web_fetch":
 		return "↗"
+	case "memory_search", "memory_write":
+		return "▣"
+	case "spawn_subagent":
+		return "◎"
+	case "ask_user_question", "ask_user":
+		return "？"
+	case "todo_write":
+		return "☑"
+	case "write_plan", "enter_plan_mode", "exit_plan_mode":
+		return "◈"
 	default:
 		return "◆"
 	}

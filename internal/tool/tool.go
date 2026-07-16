@@ -497,6 +497,8 @@ func NewRegistry(workDir string) *Registry {
     r.Register(&TodoWrite{})
     r.Register(lister)
     r.Register(grep)
+    glob := &GlobSearch{WorkDir: workDir}
+    r.Register(glob)
     r.Register(&CodebaseSearch{WorkDir: workDir})
     r.Register(&Diagnostics{WorkDir: workDir})
     r.Register(fetch)
@@ -513,6 +515,9 @@ func NewRegistry(workDir string) *Registry {
     r.Register(&Alias{AliasName: "web_fetch", Inner: fetch})
     r.Register(&Alias{AliasName: "list_directory", Inner: lister})
     r.Register(&Alias{AliasName: "edit_file", Inner: sr})
+    r.Register(&Alias{AliasName: "glob", Inner: glob})
+    r.Register(&Alias{AliasName: "find_files", Inner: glob})
+    r.Register(&Alias{AliasName: "ask_user", Inner: &AskUserQuestion{}})
     // GitHub integration (gh CLI + GITHUB_TOKEN REST)
     r.Register(&GitHubTool{Client: defaultGitHubClient(workDir)})
     return r

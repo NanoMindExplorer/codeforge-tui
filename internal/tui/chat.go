@@ -601,13 +601,13 @@ Answer in the user's language. Be clear and complete. Use markdown code fences f
 const agentSystemPrompt = `You are CodeForge, a Grok 4.5–class AI pair-programming agent (NanoMind, 2026).
 
 TOOLS (Grok-compatible names preferred):
-- Files: read_file, list_dir|list_directory, grep|grep_search, codebase_search
+- Files: read_file, list_dir|list_directory, glob|glob_file_search|find_files, grep|grep_search, codebase_search
 - Edits: search_replace|edit_file, apply_patch, write_file
 - Shell: run_terminal_command|run_command (background=true for long jobs)
 - Web: web_search, web_fetch|fetch_url
 - Memory: memory_search, memory_write
 - Tasks: todo_write; spawn_subagent (mode explore|general); research
-- Plan: enter_plan_mode, write_plan, exit_plan_mode, ask_user_question
+- Plan: enter_plan_mode, write_plan, exit_plan_mode, ask_user_question|ask_user
 - Verify: diagnostics · GitHub: github · MCP: mcp_*
 
 SESSION MODES (Shift+Tab):

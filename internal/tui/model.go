@@ -31,6 +31,7 @@ import (
 	"github.com/codeforge/tui/internal/tui/sessionpicker"
 	"github.com/codeforge/tui/internal/tui/slashmenu"
 	"github.com/codeforge/tui/internal/tui/themepicker"
+	"github.com/codeforge/tui/internal/ui/askuser"
 	"github.com/codeforge/tui/internal/ui/blockview"
 	"github.com/codeforge/tui/internal/ui/clipboard"
 	"github.com/codeforge/tui/internal/ui/components"
@@ -110,6 +111,9 @@ type Model struct {
 	permAsk  permask.Model
 	permReq  chan permAskRequest // agent → UI
 	permWait *permAskRequest     // active request awaiting y/n
+
+	// Phase G2: agent ask_user_question option picker
+	userAsk askuser.Model
 }
 
 // permAskRequest is a blocking permission prompt from the agent goroutine.
@@ -156,6 +160,7 @@ const (
 	ModePermAsk
 	ModeBlockView
 	ModeSettings
+	ModeAskUser
 )
 
 func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry, repo *git.Repo, workdir string) Model {
@@ -239,6 +244,7 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		hooks:       hookRunner,
 		permAsk:     permask.New(),
 		permReq:     askCh,
+		userAsk:     askuser.New(),
 	}
 	// Wire plan.md path + BUILD write mode (staged)
 	m.syncWriteMode()
@@ -376,7 +382,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// ── Steal-Esc stack (Grok order) ─────────────
-		// Review → PlanReview → PermAsk → BlockView → Settings → Theme → Resume → Rewind → …
+		// Review → PlanReview → PermAsk → AskUser → BlockView → Settings → Theme → Resume → Rewind → …
 		if m.mode == ModeReview {
 			return m.updateReview(msg)
 		}
@@ -385,6 +391,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.mode == ModePermAsk {
 			return m.updatePermAsk(msg)
+		}
+		if m.mode == ModeAskUser {
+			return m.updateAskUser(msg)
 		}
 		if m.mode == ModeBlockView {
 			return m.updateBlockView(msg)
@@ -970,7 +979,7 @@ func isImmediateSlash(cmd string) bool {
 		"/sessions", "/resume", "/new", "/fork", "/rewind", "/compact",
 		"/context", "/session-info", "/mode", "/plan", "/view-plan",
 		"/permissions", "/hooks", "/todos", "/tasks", "/settings", "/copy",
-		"/undo", "/push", "/pull":
+		"/memory", "/undo", "/push", "/pull":
 		return true
 	default:
 		return false
@@ -1324,6 +1333,35 @@ func (m Model) updatePermAsk(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) updateAskUser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.userAsk.Dismiss()
+		m.mode = ModeInsert
+		m.focusPrompt = true
+		m.chat.FocusInput()
+		m.toast = components.NewToast("Type your answer in the prompt", "info", 3*time.Second)
+		return m, nil
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+		n, _ := strconv.Atoi(msg.String())
+		if m.userAsk.Pick(n) {
+			ans := m.userAsk.Answer
+			m.userAsk.Close()
+			m.mode = ModeInsert
+			m.focusPrompt = true
+			m.chat.FocusInput()
+			// Submit selected option as the next user turn
+			m.chat.SetInput(ans)
+			if c := m.chat.Submit(); c != nil {
+				m.toast = components.NewToast("Answered: "+truncateStr(ans, 40), "success", 2*time.Second)
+				return m, tea.Batch(c, m.persistSessionCmd())
+			}
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
 // syncPermWithSession mirrors YOLO/DESIGN into permission engine mode.
 func (m *Model) syncPermWithSession() {
 	if m.perm == nil {
@@ -1519,6 +1557,9 @@ func (m *Model) handleAgentEvent(ev agent.Event) []tea.Cmd {
 			}
 			m.chat.AddSystemMessage(msg)
 			m.toast = components.NewToast("Agent is waiting for your answer", "info", 4*time.Second)
+			// Interactive option modal (G2 polish)
+			m.userAsk.Open(q.Question, q.Options)
+			m.mode = ModeAskUser
 		}
 	}
 	if ev.Kind == agent.EventToolResult && ev.ToolDiff != "" {
@@ -1758,6 +1799,14 @@ func (m Model) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left,
 			m.chat.ViewScrollback(),
 			m.permAsk.View(),
+			m.status.ViewFooter(),
+		)
+	}
+	// ── Agent ask_user_question modal ─────────────────
+	if m.mode == ModeAskUser {
+		return lipgloss.JoinVertical(lipgloss.Left,
+			m.chat.ViewScrollback(),
+			m.userAsk.View(),
 			m.status.ViewFooter(),
 		)
 	}
@@ -2332,6 +2381,63 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 			m.chat.AddSystemMessage("Todos cleared")
 		default:
 			m.chat.AddSystemMessage("Usage: /todos [add|done|progress|clear]")
+		}
+
+	case "memory", "mem":
+		// /memory [list|add <text>|search <query>]
+		if len(args) == 0 {
+			m.chat.AddSystemMessage("Memory store (~/.codeforge/memory/):\n  /memory list          — recent notes\n  /memory add <text>    — store a note\n  /memory search <q>    — keyword search\n\nAgents use memory_search / memory_write tools.")
+			return nil
+		}
+		switch strings.ToLower(args[0]) {
+		case "list", "ls", "show":
+			notes, err := tool.ListMemoryRecent(15)
+			if err != nil {
+				m.chat.AddSystemMessage("⚠ " + err.Error())
+				return nil
+			}
+			if len(notes) == 0 {
+				m.chat.AddSystemMessage("(no memory notes yet — try /memory add …)")
+				return nil
+			}
+			var b strings.Builder
+			b.WriteString("Recent memory notes:\n")
+			for i, n := range notes {
+				fmt.Fprintf(&b, "  %d. %s\n", i+1, n)
+			}
+			m.chat.AddSystemMessage(b.String())
+		case "add", "write", "save":
+			text := strings.Join(args[1:], " ")
+			if text == "" {
+				m.chat.AddSystemMessage("Usage: /memory add <text>")
+				return nil
+			}
+			if err := tool.AppendMemory(text, ""); err != nil {
+				m.chat.AddSystemMessage("⚠ " + err.Error())
+				return nil
+			}
+			m.chat.AddSystemMessage("✓ Memory note stored")
+			m.toast = components.NewToast("Memory saved", "success", 2*time.Second)
+		case "search", "find", "s":
+			q := strings.Join(args[1:], " ")
+			if q == "" {
+				m.chat.AddSystemMessage("Usage: /memory search <query>")
+				return nil
+			}
+			ms := &tool.MemorySearch{}
+			res := ms.Execute([]byte(fmt.Sprintf(`{"query":%q,"limit":10}`, q)))
+			if res.Error != "" {
+				m.chat.AddSystemMessage("⚠ " + res.Error)
+				return nil
+			}
+			m.chat.AddSystemMessage(res.Output)
+		default:
+			// bare text after /memory → treat as add
+			if err := tool.AppendMemory(argStr, ""); err != nil {
+				m.chat.AddSystemMessage("⚠ " + err.Error())
+				return nil
+			}
+			m.chat.AddSystemMessage("✓ Memory note stored (implicit add)")
 		}
 
 	case "tasks", "bg":
@@ -3323,6 +3429,10 @@ func modeString(m Mode) string {
 		return "REVIEW"
 	case ModeFilePick:
 		return "INSERT"
+	case ModeAskUser:
+		return "ASK"
+	case ModePermAsk:
+		return "PERM"
 	}
 	return "?"
 }
@@ -3334,7 +3444,7 @@ var slashCommands = []string{
 	"/theme", "/compact-mode", "/vim-mode",
 	"/resume", "/new", "/fork", "/rewind", "/compact", "/context", "/session-info",
 	"/mode", "/plan", "/view-plan", "/permissions", "/hooks",
-	"/todos", "/tasks", "/settings", "/copy",
+	"/todos", "/tasks", "/memory", "/settings", "/copy",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
 
@@ -3348,7 +3458,7 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge · Grok-parity v1.0  ·  Phases 1–9
+	return `CodeForge · Grok 4.5 parity  ·  Phases 1–9 + G1–G2
 
 SCROLLBACK
   Enter · y/Y · j/k · fold · G follow-tail
@@ -3358,24 +3468,26 @@ MODES
 
 PRODUCT
   /resume /new /fork /rewind /compact /context
-  /plan /view-plan /todos /tasks /settings /copy
+  /plan /view-plan /todos /tasks /memory /settings /copy
   /theme /permissions /hooks /vim-mode /compact-mode
 
 AGENT / IDE
   codeforge agent … | agent stdio | agent serve
-  See docs/ACP.md · docs/DOGFOOD.md
+  Grok tools: web_search, glob, memory_*, spawn_subagent, ask_user_question
+  See docs/ACP.md · docs/GROK_TOOLS_AND_MODEL.md
 `
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.0.0
+	return `CodeForge TUI v1.1.1
 Created by NanoMind — 2026 — Apache 2.0
 
-Grok Build TUI–compatible (Phases 1–9):
+Grok Build TUI–compatible (Phases 1–9 + G1–G2):
   blocks · input · themes · sessions · design plan
   permissions/hooks · todos/tasks · ACP IDE bridge
+  Grok 4.5 model · full Grok tool surface + /memory
 Honest gaps: OS sandbox, full Grok extension methods.
-See docs/GROK_PARITY_ROADMAP.md
+See docs/GROK_PARITY_ROADMAP.md · docs/GROK_TOOLS_AND_MODEL.md
 `
 }
 

@@ -23,6 +23,10 @@ type StatusBarModel struct {
 	Tokens    int
 	Streaming bool
 	Spark     []float64 // token rate samples
+	// GitHub integration indicators
+	GitHubUser string
+	GitHubRepo string
+	GitHubOK   bool
 }
 
 func NewStatusBarModel() StatusBarModel {
@@ -66,10 +70,16 @@ func (s StatusBarModel) ViewTop() string {
 	}
 
 	spark := theme.Sparkline(s.Spark)
-	info := fmt.Sprintf(" %s  git:%s  %s  $%.4f ",
-		aiStatus, s.Branch, spark, s.Cost)
+	ghPart := ""
+	if s.GitHubOK && s.GitHubUser != "" {
+		ghPart = "  gh:@" + s.GitHubUser
+	} else if s.GitHubRepo != "" {
+		ghPart = "  gh:?"
+	}
+	info := fmt.Sprintf(" %s  git:%s%s  %s  $%.4f ",
+		aiStatus, s.Branch, ghPart, spark, s.Cost)
 
-	helpHint := lipgloss.NewStyle().Foreground(t.TextMuted).Render("?=help  ⌘K  q")
+	helpHint := lipgloss.NewStyle().Foreground(t.TextMuted).Render("?=help  ⌘K  /gh  q")
 
 	middleWidth := s.width - lipgloss.Width(brand) - lipgloss.Width(mode) - lipgloss.Width(agent) - lipgloss.Width(helpHint) - 3
 	if middleWidth < 0 {

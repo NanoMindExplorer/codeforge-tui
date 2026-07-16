@@ -220,6 +220,8 @@ func ToolIcon(name string) string {
 		return "🔍"
 	case "list_dir":
 		return "📁"
+	case "github":
+		return "🐙"
 	default:
 		return "🔧"
 	}

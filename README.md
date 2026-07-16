@@ -12,9 +12,9 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v0.3.0` |
+| **Version** | `v0.4.0` |
 
-CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and ship changes with git — without leaving the keyboard.
+CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
 ---
 
@@ -24,29 +24,21 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 2. [Requirements](#requirements)
 3. [Installation](#installation)
 4. [API keys & providers](#api-keys--providers)
-5. [Quick start](#quick-start)
-6. [User guide](#user-guide)
-   - [Interface layout](#interface-layout)
-   - [Modes (NORMAL / INSERT / …)](#modes)
-   - [Chat vs agent](#chat-vs-agent)
-   - [Plan vs Act (trust layer)](#plan-vs-act-trust-layer)
-   - [Review overlay](#review-overlay)
-   - [File mentions (`@file`)](#file-mentions-file)
-   - [Command palette](#command-palette)
-   - [Sessions](#sessions)
-   - [Undo / checkpoints](#undo--checkpoints)
-   - [Git helpers](#git-helpers)
-7. [Keybindings reference](#keybindings-reference)
-8. [Slash commands reference](#slash-commands-reference)
-9. [CLI flags](#cli-flags)
-10. [Environment variables](#environment-variables)
-11. [Configuration files](#configuration-files)
-12. [Typical workflows](#typical-workflows)
-13. [Architecture](#architecture)
-14. [Development & tests](#development--tests)
-15. [Distribution](#distribution)
-16. [Troubleshooting](#troubleshooting)
-17. [License & credits](#license--credits)
+5. [GitHub setup](#github-setup)
+6. [Quick start](#quick-start)
+7. [User guide](#user-guide)
+8. [GitHub integration](#github-integration)
+9. [Keybindings reference](#keybindings-reference)
+10. [Slash commands reference](#slash-commands-reference)
+11. [CLI flags](#cli-flags)
+12. [Environment variables](#environment-variables)
+13. [Configuration files](#configuration-files)
+14. [Typical workflows](#typical-workflows)
+15. [Architecture](#architecture)
+16. [Development & tests](#development--tests)
+17. [Distribution](#distribution)
+18. [Troubleshooting](#troubleshooting)
+19. [License & credits](#license--credits)
 
 ---
 
@@ -62,6 +54,7 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 | **Files pane** | Live project listing, AI “touched” highlights, optional git status glyphs. |
 | **Workflow** | `Ctrl+K` fuzzy palette · `@file` attachments · persistent **sessions** · `/undo` checkpoints · toasts. |
 | **Providers** | **Gemini** · **Claude** · **OpenAI-compatible** · **Ollama** (local/offline). |
+| **GitHub** | First-class integration via **`gh` CLI** and/or **`GITHUB_TOKEN`**: PRs, issues, CI checks, push/pull, branch create — usable from slash commands **and** the agent `github` tool. |
 | **Theme** | Aurora Dark design tokens; light theme; optional `~/.codeforge/theme.yaml`. |
 | **Motion** | Breathing gradient borders, typewriter system messages, toast notifications. Disable with `--no-motion`. |
 | **Portable** | Pure Go, `CGO_ENABLED=0`, Termux / Android friendly (~21MB single binary). |
@@ -114,7 +107,7 @@ codeforge --no-motion
 
 ```bash
 codeforge --version
-# → codeforge 0.3.0
+# → codeforge 0.4.0
 ```
 
 ---
@@ -155,6 +148,50 @@ Inside CodeForge you can still switch with:
 
 - `/provider` — list / switch (`gemini`, `claude`, `openai`, `ollama`)
 - `/model` — list / switch model IDs for the current provider
+
+---
+
+## GitHub setup
+
+CodeForge talks to GitHub the same way advanced AI coding tools do:
+
+1. **Preferred:** [GitHub CLI](https://cli.github.com/) authenticated  
+2. **Alternative:** Personal access token in the environment  
+
+### Option A — `gh` CLI (recommended)
+
+```bash
+# Install gh (examples)
+# Debian/Ubuntu: sudo apt install gh
+# macOS: brew install gh
+# Termux: pkg install gh
+
+gh auth login
+# scopes: repo, read:org, workflow (if you push Actions YAML)
+
+gh auth status
+```
+
+CodeForge shells out to `gh` for PR/issue/check operations when it is on `PATH`.
+
+### Option B — token only
+
+```bash
+export GITHUB_TOKEN="ghp_..."   # or GH_TOKEN
+# classic PAT: repo scope (and workflow if needed)
+# fine-grained: repository access + pull requests, issues, contents
+```
+
+REST mode is used when `gh` is missing or fails, as long as a token is set.
+
+### Verify inside CodeForge
+
+```text
+/gh auth
+/gh repo
+```
+
+Status bar shows `gh:@username` when auth succeeds.
 
 ---
 
@@ -305,7 +342,59 @@ If the workdir is a git repository (CodeForge may init one if missing):
 | Command | Effect |
 |---------|--------|
 | `/status` | Show branch + working tree status; refresh file glyphs |
-| `/commit` | `git add -A` + conventional-style auto commit via go-git |
+| `/commit [msg]` | `git add -A` + commit (optional message) |
+| `/push` | `git push -u origin HEAD` |
+| `/pull` | `git pull` (ff-only, then plain pull fallback) |
+
+---
+
+## GitHub integration
+
+### What you can do
+
+| Capability | Slash command | Agent tool action |
+|------------|---------------|-------------------|
+| Auth / identity | `/gh auth` | `auth_status` |
+| Repo metadata | `/gh repo` | `repo_view` |
+| List / view PRs | `/pr list` · `/pr view [n]` | `pr_list` · `pr_view` |
+| Create PR | `/pr create <title> [| body]` | `pr_create` |
+| Merge PR | `/pr merge <n> [squash\|merge\|rebase]` | `pr_merge` |
+| CI checks | `/pr checks [n]` | `checks` |
+| Issues | `/issue list` · `/issue view` · `/issue create` | `issue_*` |
+| Push / pull | `/push` · `/pull` | `push` · `pull` |
+| Branch | `/gh branch [name]` | `branch_create` |
+| Log | `/gh log` | `log` |
+
+### End-to-end: ship a feature like an AI agent
+
+```text
+1. /mode plan                    # safe writes
+2. /act implement feature X …
+3. Review overlay → Enter        # apply patches
+4. /commit feat: implement X
+5. /push
+6. /pr create feat: implement X | ## Summary
+   - what changed
+   - test plan
+7. /pr checks
+```
+
+Or in one agent turn (Act or after files exist):
+
+```text
+/act commit all changes with a good message, push the branch,
+     and open a pull request against main with a markdown summary
+```
+
+The agent will call the **`github`** tool (`push`, `pr_create`, …).
+
+### Architecture note
+
+```text
+internal/github/     Client: gh CLI first → REST (GITHUB_TOKEN) fallback
+internal/tool/github.go   Agent-facing unified "github" tool
+internal/tui/        /gh /pr /issue /push /pull + status bar badge
+```
 
 ---
 
@@ -382,12 +471,22 @@ Type in INSERT (prefix `/`) or via `:` / palette. Aliases in parentheses.
 | `/cost` (`/c`) | Session tokens, cost, duration | `/cost` |
 | `/clear` | Clear chat + start a fresh session id | `/clear` |
 
-### Git & meta
+### Git & GitHub
 
 | Command | Description |
 |---------|-------------|
-| `/status` (`/s`) | Git status |
-| `/commit` | Stage all + auto-commit |
+| `/status` (`/s`) | Local git status |
+| `/commit [msg]` | Stage all + commit |
+| `/push` | Push current branch to origin |
+| `/pull` | Pull from remote |
+| `/gh` … | GitHub hub (`/gh help` for full list) |
+| `/pr` … | Pull requests (list/view/create/merge/checks) |
+| `/issue` … | Issues (list/view/create) |
+
+### Meta
+
+| Command | Description |
+|---------|-------------|
 | `/help` (`/h` `/?`) | In-app help |
 | `/about` | Version / author / stack |
 | `/quit` (`/q` `/exit`) | Exit CodeForge |
@@ -432,6 +531,7 @@ codeforge --skip-wizard --no-motion ~/src/myapp
 | `OPENAI_BASE_URL` | Override API base (default `https://api.openai.com/v1`) |
 | `OLLAMA_HOST` | Ollama base URL (default `http://127.0.0.1:11434`) |
 | `OLLAMA_MODEL` | Default Ollama model (default `llama3.2`) |
+| `GITHUB_TOKEN` / `GH_TOKEN` | GitHub REST auth (optional if `gh auth login` is done) |
 | `CODEFORGE_THEME` | `aurora` (default) or `light` |
 | `CODEFORGE_NO_MOTION` | `1` / `true` disables motion |
 | `NERD_FONT` / `NERD_FONTS` | Prefer Nerd Font file/git glyphs |
@@ -512,6 +612,23 @@ codeforge --skip-wizard
 # then: /provider ollama
 ```
 
+### 6. Open a PR from the TUI
+
+```bash
+gh auth login   # once
+cd my-repo && codeforge --skip-wizard
+```
+
+```text
+/gh branch feat/my-change
+/act implement the change …
+# review + apply if Plan mode
+/commit feat: my change
+/push
+/pr create feat: my change | ## Summary\n- …\n\n## Test plan\n- [ ] …
+/pr checks
+```
+
 ---
 
 ## Architecture
@@ -521,7 +638,8 @@ cmd/codeforge/          CLI entry, wizard, provider registration
 internal/
   agent/                Tool-calling agent loop (events → TUI)
   provider/             Gemini · Claude · OpenAI · Ollama · MCP scaffold
-  tool/                 Registry + sandboxed tools + StagedWriter (Plan/Act)
+  tool/                 Registry + sandboxed tools + StagedWriter + github tool
+  github/               gh CLI + REST client (PRs, issues, checks, push)
   git/  diff/  config/  Supporting core
   theme/                Design tokens (single source of color truth)
   keymap/               Central keybindings
@@ -596,6 +714,9 @@ Release matrix (intended): `linux/amd64`, `linux/arm64` (Termux), `darwin/arm64`
 | Ollama not listed | Ensure `ollama serve` is up; check `OLLAMA_HOST`. |
 | Custom OpenAI proxy fails | Verify `OPENAI_BASE_URL` has no trailing slash issues; must expose `/chat/completions`. |
 | Binary large (~21MB) | Expected with Glamour/Chroma; still pure Go / no CGO. |
+| `/gh auth` fails | Run `gh auth login` or export `GITHUB_TOKEN` with `repo` scope. |
+| `/pr create` fails | Ensure branch is pushed (`/push`), remote is GitHub, and you have permission. |
+| Checks empty | Need `gh` CLI for best CI rollup; open PR first. |
 
 ---
 

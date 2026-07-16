@@ -431,6 +431,8 @@ func NewRegistry(workDir string) *Registry {
     r.Register(&DirLister{WorkDir: workDir})
     r.Register(&GrepSearch{WorkDir: workDir})
     r.Register(&ShellExec{WorkDir: workDir})
+    // GitHub integration (gh CLI + GITHUB_TOKEN REST) — same class of ops as modern AI agents.
+    r.Register(&GitHubTool{Client: defaultGitHubClient(workDir)})
     return r
 }
 

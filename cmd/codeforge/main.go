@@ -22,7 +22,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "0.3.0"
+	ProjectVersion = "0.4.0"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -185,31 +185,38 @@ func runWizard(reg *provider.Registry) {
 	show("OpenAI", "OPENAI_API_KEY")
 	fmt.Println("   ○ Ollama lokal — jalankan `ollama serve`")
 	fmt.Println()
+	// GitHub
+	if os.Getenv("GITHUB_TOKEN") != "" || os.Getenv("GH_TOKEN") != "" {
+		fmt.Println("   ✓ GitHub token (GITHUB_TOKEN / GH_TOKEN)")
+	} else {
+		fmt.Println("   ○ GitHub — run `gh auth login` or set GITHUB_TOKEN")
+	}
+	fmt.Println()
 	fmt.Println("   Get Gemini free key: https://aistudio.google.com/apikey")
-	fmt.Print("   Enter untuk lanjut (atau ketik key GEMINI sekarang): ")
+	fmt.Print("   Enter to continue (or paste GEMINI key now): ")
 	line, _ := r.ReadString('\n')
 	line = strings.TrimSpace(line)
 	if strings.HasPrefix(line, "AIza") || len(line) > 20 {
 		_ = os.Setenv("GEMINI_API_KEY", line)
-		fmt.Println("   ✓ GEMINI_API_KEY di-set untuk sesi ini")
+		fmt.Println("   ✓ GEMINI_API_KEY set for this session")
 	}
 
 	// Screen 2: provider pick (informational)
 	fmt.Println()
-	fmt.Println("② Provider default: Gemini jika key ada, else Claude/OpenAI/Ollama")
-	fmt.Println("   Ganti nanti dengan /provider dan /model")
+	fmt.Println("② Default provider: Gemini if key present, else Claude/OpenAI/Ollama")
+	fmt.Println("   Switch later with /provider and /model")
 	fmt.Print("   Enter…")
 	_, _ = r.ReadString('\n')
 
-	// Screen 3: keybindings
+	// Screen 3: keybindings + GitHub
 	fmt.Println()
-	fmt.Println("③ Keybinding penting:")
+	fmt.Println("③ Essential keys & GitHub:")
 	fmt.Println("   i          chat          Ctrl+K   command palette")
 	fmt.Println("   /act task  agent mode    Shift+P  Plan ↔ Act")
-	fmt.Println("   @          mention file  ?        help")
-	fmt.Println("   q          quit")
+	fmt.Println("   /gh auth   GitHub        /pr /push /pull /issue")
+	fmt.Println("   @          mention file  ?        help   q  quit")
 	fmt.Println()
-	fmt.Print("   Enter untuk membuka CodeForge…")
+	fmt.Print("   Enter to open CodeForge…")
 	_, _ = r.ReadString('\n')
 }
 
@@ -217,8 +224,8 @@ func printBanner() {
 	fmt.Printf(`
 ╔══════════════════════════════════════════════════════════════╗
 ║   CodeForge TUI v%s  |  by %s  |  %s                 ║
-║   Terminal Glass · Plan/Act · Multi-Provider                 ║
-║   Gemini · Claude · OpenAI · Ollama                          ║
+║   Terminal Glass · Plan/Act · GitHub · Multi-Provider        ║
+║   Gemini · Claude · OpenAI · Ollama · gh / GITHUB_TOKEN      ║
 ╚══════════════════════════════════════════════════════════════╝
 `, ProjectVersion, ProjectAuthor, ProjectYear)
 }
@@ -238,9 +245,14 @@ Flags:
 Env:
   GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY
   OPENAI_BASE_URL, OLLAMA_HOST, OLLAMA_MODEL
+  GITHUB_TOKEN / GH_TOKEN   (or: gh auth login)
   CODEFORGE_THEME=aurora|light
   CODEFORGE_NO_MOTION=1
   NERD_FONT=1
+
+GitHub inside TUI:
+  /gh auth · /push · /pull · /pr · /issue · /commit
+  Agent tool: github (pr_create, checks, …)
 
 `, ProjectVersion)
 }

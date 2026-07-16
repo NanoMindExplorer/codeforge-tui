@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/codeforge/tui/internal/checkpoint"
 	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/git"
+	gh "github.com/codeforge/tui/internal/github"
 	"github.com/codeforge/tui/internal/keymap"
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/session"
@@ -57,6 +60,7 @@ type Model struct {
 	agentCh  <-chan agent.Event
 
 	session   *session.Session
+	ghClient  *gh.Client
 	quitting  bool
 	startTime time.Time
 	totalCost float64
@@ -92,6 +96,7 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 	if cur, err := provReg.Current(); err == nil {
 		sess.Model = cur.Model()
 	}
+	ghc := gh.New(workdir)
 	m := Model{
 		cfg:         cfg,
 		providerReg: provReg,
@@ -112,6 +117,7 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		picker:      filepicker.New(workdir),
 		review:      review.New(),
 		session:     sess,
+		ghClient:    ghc,
 	}
 	// Ensure staged writer is in Plan mode
 	if sw := toolReg.GetStagedWriter(); sw != nil {
@@ -128,6 +134,20 @@ func (m Model) Init() tea.Cmd {
 		// Kick context pane live on start
 		func() tea.Msg {
 			return ContextUpdateMsg{Refresh: true}
+		},
+		// Resolve GitHub identity asynchronously
+		func() tea.Msg {
+			if m.ghClient == nil {
+				return GitHubStatusMsg{}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			user, err := m.ghClient.WhoAmI(ctx)
+			if err != nil {
+				return GitHubStatusMsg{Err: err.Error()}
+			}
+			slug, _ := m.ghClient.RepoSlug(ctx)
+			return GitHubStatusMsg{User: user, Repo: slug, OK: true}
 		},
 	)
 }
@@ -390,6 +410,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ToastMsg:
 		m.toast = components.NewToast(msg.Text, msg.Kind, 3*time.Second)
 
+	case GitHubStatusMsg:
+		if msg.OK {
+			m.status.GitHubUser = msg.User
+			m.status.GitHubRepo = msg.Repo
+			m.status.GitHubOK = true
+		} else {
+			m.status.GitHubOK = false
+			if msg.Err != "" {
+				m.status.GitHubUser = ""
+			}
+		}
+
 	case errMsg:
 		m.chat.AddSystemMessage("⚠ Error: " + msg.err.Error())
 		m.chat.streaming = false
@@ -563,7 +595,13 @@ func buildPaletteItems(m *Model) []palette.Item {
 		{"/model", "Model", "Switch model"},
 		{"/cost", "Cost", "Session cost"},
 		{"/status", "Git status", "Show git status"},
-		{"/commit", "Commit", "Auto-commit"},
+		{"/commit", "Commit", "Stage all + commit"},
+		{"/push", "Push", "Push branch to origin"},
+		{"/pull", "Pull", "Pull from origin"},
+		{"/pr list", "PR list", "List pull requests"},
+		{"/pr create", "PR create", "Create pull request"},
+		{"/issue list", "Issues", "List GitHub issues"},
+		{"/gh auth", "GitHub auth", "Auth status"},
 		{"/clear", "Clear", "Clear chat"},
 		{"/quit", "Quit", "Exit CodeForge"},
 	}
@@ -1052,14 +1090,40 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 			m.chat.AddSystemMessage("⚠ git add: " + err.Error())
 			return nil
 		}
-		msg := git.GenerateCommitMessage("feat", "", "AI-assisted changes via CodeForge TUI")
-		hash, err := m.gitRepo.Commit(msg)
+		cmsg := argStr
+		if cmsg == "" {
+			cmsg = git.GenerateCommitMessage("feat", "", "AI-assisted changes via CodeForge TUI")
+		}
+		hash, err := m.gitRepo.Commit(cmsg)
 		if err != nil {
 			m.chat.AddSystemMessage("⚠ commit: " + err.Error())
 			return nil
 		}
-		m.chat.AddSystemMessage(fmt.Sprintf("✓ Committed: %s\n  %s", hash, msg))
+		m.chat.AddSystemMessage(fmt.Sprintf("✓ Committed: %s\n  %s", hash, cmsg))
 		m.toast = components.NewToast("Committed "+hash, "success", 3*time.Second)
+
+	// ── GitHub integration (gh + API) ─────────────────────
+	case "gh", "github":
+		return m.handleGitHubCommand(args)
+
+	case "pr":
+		// /pr [list|view|create|merge|checks] ...
+		if len(args) == 0 {
+			return m.handleGitHubCommand([]string{"pr", "list"})
+		}
+		return m.handleGitHubCommand(append([]string{"pr"}, args...))
+
+	case "issue":
+		if len(args) == 0 {
+			return m.handleGitHubCommand([]string{"issue", "list"})
+		}
+		return m.handleGitHubCommand(append([]string{"issue"}, args...))
+
+	case "push":
+		return m.handleGitHubCommand([]string{"push"})
+
+	case "pull":
+		return m.handleGitHubCommand([]string{"pull"})
 
 	case "act", "a":
 		if argStr == "" {
@@ -1126,6 +1190,307 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 	return nil
 }
 
+// handleGitHubCommand runs GitHub ops from slash commands.
+// Forms:
+//
+//	/gh auth|repo|push|pull|log|branch <name>
+//	/gh pr list|view [n]|create <title> [| body]|merge <n>|checks [n]
+//	/gh issue list|view <n>|create <title> [| body]
+//	/pr … and /issue … are aliases without the leading "pr"/"issue" word duplicated.
+func (m *Model) handleGitHubCommand(args []string) tea.Cmd {
+	if m.ghClient == nil {
+		m.chat.AddSystemMessage("GitHub client not available")
+		return nil
+	}
+	if len(args) == 0 {
+		m.chat.AddSystemMessage(githubHelpText())
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	// note: cancel after sync work; long ops still bounded
+	defer cancel()
+
+	head := strings.ToLower(args[0])
+	rest := args[1:]
+
+	// Allow /gh pr … and also when called as /pr via prepend
+	switch head {
+	case "help", "h", "?":
+		m.chat.AddSystemMessage(githubHelpText())
+		return nil
+
+	case "auth", "status":
+		out, err := m.ghClient.AuthStatus(ctx)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ GitHub auth: " + err.Error() +
+				"\n\nSetup:\n  gh auth login\n  — or —\n  export GITHUB_TOKEN=ghp_...")
+			return nil
+		}
+		user, _ := m.ghClient.WhoAmI(ctx)
+		slug, _ := m.ghClient.RepoSlug(ctx)
+		m.status.GitHubUser = user
+		m.status.GitHubRepo = slug
+		m.status.GitHubOK = true
+		m.chat.AddSystemMessage("GitHub auth:\n" + out +
+			fmt.Sprintf("\n\nUser: %s\nRepo: %s", user, slug))
+		return nil
+
+	case "repo":
+		out, err := m.ghClient.RepoView(ctx)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("Repository:\n" + out)
+		return nil
+
+	case "push":
+		out, err := m.ghClient.Push(ctx, true)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ push: " + err.Error())
+			m.toast = components.NewToast("Push failed", "error", 3*time.Second)
+			return nil
+		}
+		m.chat.AddSystemMessage("✓ Pushed\n" + out)
+		m.toast = components.NewToast("Pushed to origin", "success", 3*time.Second)
+		return nil
+
+	case "pull":
+		out, err := m.ghClient.Pull(ctx)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ pull: " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("✓ Pulled\n" + out)
+		m.toast = components.NewToast("Pulled", "success", 2*time.Second)
+		return nil
+
+	case "log":
+		out, err := m.ghClient.LogRecent(ctx, 15)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("Recent commits:\n" + out)
+		return nil
+
+	case "branch":
+		if len(rest) == 0 {
+			br, err := m.ghClient.CurrentBranch(ctx)
+			if err != nil {
+				m.chat.AddSystemMessage("⚠ " + err.Error())
+				return nil
+			}
+			m.chat.AddSystemMessage("Current branch: " + br)
+			return nil
+		}
+		name := rest[0]
+		out, err := m.ghClient.CreateBranch(ctx, name)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ branch: " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("✓ Branch: " + name + "\n" + out)
+		m.toast = components.NewToast("Branch "+name, "success", 2*time.Second)
+		return nil
+
+	case "pr":
+		return m.handlePRSubcommand(ctx, rest)
+
+	case "issue":
+		return m.handleIssueSubcommand(ctx, rest)
+
+	case "checks":
+		return m.handlePRSubcommand(ctx, append([]string{"checks"}, rest...))
+
+	default:
+		// Treat unknown as agent task about github
+		return m.chat.SubmitAgent("GitHub task: " + strings.Join(args, " ") +
+			" — use the github tool with the appropriate action.")
+	}
+}
+
+func (m *Model) handlePRSubcommand(ctx context.Context, args []string) tea.Cmd {
+	if len(args) == 0 {
+		args = []string{"list"}
+	}
+	sub := strings.ToLower(args[0])
+	rest := args[1:]
+	switch sub {
+	case "list", "ls":
+		state := "open"
+		if len(rest) > 0 {
+			state = rest[0]
+		}
+		prs, err := m.ghClient.ListPRs(ctx, state, 20)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage(gh.FormatPRList(prs))
+		return nil
+	case "view", "show":
+		n := 0
+		if len(rest) > 0 {
+			n, _ = strconv.Atoi(strings.TrimPrefix(rest[0], "#"))
+		}
+		out, err := m.ghClient.ViewPR(ctx, n)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("Pull request:\n" + out)
+		return nil
+	case "create", "new":
+		if len(rest) == 0 {
+			m.chat.AddSystemMessage("Usage:\n  /pr create <title>\n  /pr create <title> | <body markdown>\n  /gh pr create \"title\" (agent can also open PRs via github tool)")
+			return nil
+		}
+		joined := strings.Join(rest, " ")
+		title, body := joined, ""
+		if i := strings.Index(joined, " | "); i >= 0 {
+			title = strings.TrimSpace(joined[:i])
+			body = strings.TrimSpace(joined[i+3:])
+		}
+		out, err := m.ghClient.CreatePR(ctx, title, body, "", "", false)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ pr create: " + err.Error())
+			m.toast = components.NewToast("PR create failed", "error", 3*time.Second)
+			return nil
+		}
+		m.chat.AddSystemMessage("✓ Pull request created\n" + out)
+		m.toast = components.NewToast("PR created", "success", 3*time.Second)
+		return nil
+	case "merge":
+		if len(rest) == 0 {
+			m.chat.AddSystemMessage("Usage: /pr merge <number> [squash|merge|rebase]")
+			return nil
+		}
+		n, err := strconv.Atoi(strings.TrimPrefix(rest[0], "#"))
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ invalid PR number")
+			return nil
+		}
+		method := "squash"
+		if len(rest) > 1 {
+			method = rest[1]
+		}
+		out, err := m.ghClient.MergePR(ctx, n, method)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ merge: " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("✓ Merged PR #" + strconv.Itoa(n) + "\n" + out)
+		m.toast = components.NewToast("Merged #"+strconv.Itoa(n), "success", 3*time.Second)
+		return nil
+	case "checks", "ci":
+		n := 0
+		if len(rest) > 0 {
+			n, _ = strconv.Atoi(strings.TrimPrefix(rest[0], "#"))
+		}
+		out, err := m.ghClient.Checks(ctx, n)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ checks: " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("CI checks:\n" + out)
+		return nil
+	default:
+		m.chat.AddSystemMessage("Unknown /pr subcommand. " + githubHelpText())
+		return nil
+	}
+}
+
+func (m *Model) handleIssueSubcommand(ctx context.Context, args []string) tea.Cmd {
+	if len(args) == 0 {
+		args = []string{"list"}
+	}
+	sub := strings.ToLower(args[0])
+	rest := args[1:]
+	switch sub {
+	case "list", "ls":
+		state := "open"
+		if len(rest) > 0 {
+			state = rest[0]
+		}
+		issues, err := m.ghClient.ListIssues(ctx, state, 20)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage(gh.FormatIssueList(issues))
+		return nil
+	case "view", "show":
+		if len(rest) == 0 {
+			m.chat.AddSystemMessage("Usage: /issue view <number>")
+			return nil
+		}
+		n, _ := strconv.Atoi(strings.TrimPrefix(rest[0], "#"))
+		out, err := m.ghClient.ViewIssue(ctx, n)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("Issue:\n" + out)
+		return nil
+	case "create", "new":
+		if len(rest) == 0 {
+			m.chat.AddSystemMessage("Usage: /issue create <title> [| body]")
+			return nil
+		}
+		joined := strings.Join(rest, " ")
+		title, body := joined, ""
+		if i := strings.Index(joined, " | "); i >= 0 {
+			title = strings.TrimSpace(joined[:i])
+			body = strings.TrimSpace(joined[i+3:])
+		}
+		out, err := m.ghClient.CreateIssue(ctx, title, body, nil)
+		if err != nil {
+			m.chat.AddSystemMessage("⚠ " + err.Error())
+			return nil
+		}
+		m.chat.AddSystemMessage("✓ Issue created\n" + out)
+		m.toast = components.NewToast("Issue created", "success", 3*time.Second)
+		return nil
+	default:
+		m.chat.AddSystemMessage("Unknown /issue subcommand. " + githubHelpText())
+		return nil
+	}
+}
+
+func githubHelpText() string {
+	return `GitHub integration (gh CLI or GITHUB_TOKEN)
+
+AUTH & REPO
+  /gh auth              Auth status + user + repo slug
+  /gh repo              Repository metadata
+  /gh log               Recent commits
+  /gh branch [name]     Show or create branch
+
+SYNC
+  /push                 git push -u origin HEAD
+  /pull                 git pull
+  /commit [message]     Stage all + commit
+
+PULL REQUESTS
+  /pr list [state]      List PRs (open|closed|merged|all)
+  /pr view [number]     View PR (current branch if omitted)
+  /pr create <title> [| body]
+  /pr merge <n> [squash|merge|rebase]
+  /pr checks [n]        CI status
+
+ISSUES
+  /issue list [state]
+  /issue view <n>
+  /issue create <title> [| body]
+
+AGENT
+  /act open a PR for the current branch with a good title and summary
+  (agent uses the github tool: pr_create, push, checks, …)
+
+Setup:  gh auth login   OR   export GITHUB_TOKEN=ghp_...`
+}
+
 func parseGitStatus(status string) map[string]string {
 	out := map[string]string{}
 	for _, line := range strings.Split(status, "\n") {
@@ -1189,6 +1554,14 @@ type ToastMsg struct {
 	Kind string
 }
 
+// GitHubStatusMsg carries async auth discovery results.
+type GitHubStatusMsg struct {
+	User string
+	Repo string
+	OK   bool
+	Err  string
+}
+
 func pumpStream(ch <-chan provider.StreamToken) tea.Cmd {
 	if ch == nil {
 		return nil
@@ -1245,7 +1618,8 @@ func modeString(m Mode) string {
 
 var slashCommands = []string{
 	"/act", "/read", "/ls", "/grep", "/run", "/explain", "/fix",
-	"/status", "/commit", "/provider", "/model", "/mode", "/cost",
+	"/status", "/commit", "/push", "/pull", "/pr", "/issue", "/gh",
+	"/provider", "/model", "/mode", "/cost",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
 
@@ -1259,20 +1633,25 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge TUI v0.3.0  ·  NanoMind 2026  ·  Neo-Forge
+	return `CodeForge TUI v0.4.0  ·  NanoMind 2026  ·  Neo-Forge + GitHub
 
-` + keymap.FullHelp()
+` + keymap.FullHelp() + `
+
+GITHUB
+  /gh auth · /push · /pull · /pr · /issue
+  (see /gh help for full GitHub command set)`
 }
 
 func aboutText() string {
-	return `CodeForge TUI v0.3.0
-Dibuat oleh NanoMind — 2026 — Apache 2.0
+	return `CodeForge TUI v0.4.0
+Created by NanoMind — 2026 — Apache 2.0
 
 Stack: Go · Bubble Tea · Glamour · Gemini/Claude/OpenAI/Ollama
+GitHub: gh CLI + REST (GITHUB_TOKEN) — PRs, issues, checks, push/pull
 Design: Terminal Glass / Aurora Dark
-Workflow: Plan/Act · Sessions · @file · Palette · Review
+Workflow: Plan/Act · Sessions · @file · Palette · Review · GitHub
 
-"Terminal AI coding companion — open, modular, vendor-neutral — dan terasa seperti dari masa depan."
+"Terminal AI coding companion — open, modular, vendor-neutral — and it feels like the future."
                         — NanoMind, 2026`
 }
 

@@ -155,11 +155,20 @@ Sync runs are also recorded with an id so you can `resume_from` them.
 
 Prior messages + system are restored; the new prompt is appended.
 
+## Persistence (cross-session)
+
+Jobs are saved under `~/.codeforge/subagents/<id>.json` (override with `CODEFORGE_SUBAGENTS_DIR`).
+
+- Every `Put` / status update writes disk
+- On bootstrap, finished jobs are **reloaded** (resume_from works after restart)
+- Jobs still `running` on disk (process crash) are marked `failed`
+- Sequence numbers continue from the highest restored id
+
 ## Honest limits
 
 - Nested `spawn_subagent` is disabled inside children
 - Worktree cleanup always runs after the child finishes (including background)
-- No cross-session persistence of subagent jobs (in-memory until process exit)
+- Persisted messages are capped (~40 turns, 200KB output) to keep disk lean
 
 ## Related
 

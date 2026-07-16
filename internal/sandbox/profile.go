@@ -48,9 +48,11 @@ func ParseProfile(s string) (Profile, bool) {
 type Backend string
 
 const (
-	BackendOff   Backend = "off"
-	BackendBwrap Backend = "bwrap"
-	BackendSoft  Backend = "soft"
+	BackendOff      Backend = "off"
+	BackendBwrap    Backend = "bwrap"
+	BackendSoft     Backend = "soft"
+	BackendLandlock Backend = "landlock" // process-wide Linux
+	BackendSeatbelt Backend = "seatbelt" // process-wide macOS
 )
 
 // Engine is the process-wide sandbox configuration.
@@ -65,8 +67,10 @@ type Engine struct {
 	Deny []string
 	// RestrictNetwork blocks child network when backend supports it.
 	RestrictNetwork bool
-	// Backend selected at Activate time.
+	// Backend selected at Activate time (shell wrap / soft path).
 	Backend Backend
+	// ProcessBackend is landlock or seatbelt when process-wide isolation applied.
+	ProcessBackend Backend
 	// FailClosed refuses soft fallback when true (custom profiles with deny).
 	FailClosed bool
 }
@@ -119,19 +123,38 @@ func Ensure(p Profile, workdir string) *Engine {
 	return e
 }
 
-// Activate picks backend and applies built-in network flags.
+// Activate picks backend, tries process-wide Landlock/Seatbelt, then shell wrap.
 func (e *Engine) Activate() {
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if e.Profile == Off {
 		e.Backend = BackendOff
+		e.ProcessBackend = BackendOff
+		e.mu.Unlock()
 		return
 	}
 	if HasBubblewrap() {
 		e.Backend = BackendBwrap
-		return
+	} else {
+		e.Backend = BackendSoft
 	}
-	e.Backend = BackendSoft
+	e.ProcessBackend = BackendOff
+	e.mu.Unlock()
+
+	// Process-wide kernel isolation (best-effort; may re-exec on macOS)
+	if ok, err := ApplyLandlock(e); ok {
+		e.mu.Lock()
+		e.ProcessBackend = BackendLandlock
+		e.mu.Unlock()
+		LogEvent("process_sandbox", map[string]any{"backend": "landlock", "profile": string(e.Profile)})
+	} else if err != nil {
+		LogEvent("process_sandbox_fail", map[string]any{"backend": "landlock", "err": err.Error()})
+	} else if ok, err := ApplySeatbelt(e); ok {
+		e.mu.Lock()
+		e.ProcessBackend = BackendSeatbelt
+		e.mu.Unlock()
+	} else if err != nil {
+		LogEvent("process_sandbox_fail", map[string]any{"backend": "seatbelt", "err": err.Error()})
+	}
 }
 
 // Summary is a one-line status for UI / logs.
@@ -145,7 +168,11 @@ func (e *Engine) Summary() string {
 	if e.RestrictNetwork {
 		net = "net=block"
 	}
-	return fmt.Sprintf("sandbox: %s (%s, %s)", e.Profile, e.Backend, net)
+	proc := string(e.ProcessBackend)
+	if proc == "" || proc == "off" {
+		proc = "none"
+	}
+	return fmt.Sprintf("sandbox: %s (shell=%s, process=%s, %s)", e.Profile, e.Backend, proc, net)
 }
 
 // Label short badge for status bar.

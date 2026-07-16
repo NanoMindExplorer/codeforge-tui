@@ -73,14 +73,29 @@ sandbox:
 
 `~/.codeforge/sandbox-events.jsonl` logs activate/switch events for debugging.
 
+## Process-wide kernel isolation
+
+When a profile is active, CodeForge also tries **process-wide** isolation at startup:
+
+| Platform | Mechanism | Notes |
+|----------|-----------|--------|
+| **Linux** | **Landlock** LSM | Write-only rules for `workspace`/`read-only`; read+write for `strict`. Requires kernel 5.13+ (and Landlock enabled). Best-effort: falls back silently if unavailable (e.g. some containers/PRoot). |
+| **macOS** | **Seatbelt** via `sandbox-exec` | Writes a profile under `~/.codeforge/sandbox/` and re-execs once (`CODEFORGE_SEATBELT_APPLIED=1`). Set `CODEFORGE_SEATBELT=0` to disable re-exec. |
+
+Status line example:
+
+```text
+sandbox: workspace (shell=bwrap, process=landlock, net=allow)
+```
+
 ## Honest limits
 
 - Soft backend does **not** stop a malicious `bash -c 'cat /etc/shadow'` under `workspace` (reads are open by design, like Grok workspace).
 - Soft backend **does** block CodeForge file tools from writing outside allowed roots (and project writes in `read-only`).
-- Full process-wide Landlock/Seatbelt (Grok applies at process start) is **not** yet implemented — shell isolation is per-command via bwrap when available.
-- Network block on soft uses `unshare -n` and may fail without user namespaces (command still runs without net isolation).
+- Landlock may be unavailable in restricted environments (PRoot, old kernels) — shell bwrap + soft path still apply.
+- Network block on soft uses `unshare -n` and may fail without user namespaces.
 
-Install bubblewrap for stronger FS isolation on Linux:
+Install bubblewrap for stronger **child shell** FS isolation on Linux:
 
 ```bash
 # Debian/Ubuntu

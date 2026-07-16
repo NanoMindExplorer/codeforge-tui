@@ -62,8 +62,10 @@ type ImplementationInfo struct {
 }
 
 type AgentCapabilities struct {
-	LoadSession       bool               `json:"loadSession"`
+	LoadSession        bool               `json:"loadSession"`
 	PromptCapabilities PromptCapabilities `json:"promptCapabilities"`
+	// XAIExtensions lists Grok-compatible x.ai/* methods this agent implements.
+	XAIExtensions []string `json:"xaiExtensions,omitempty"`
 }
 
 type PromptCapabilities struct {

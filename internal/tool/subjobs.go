@@ -39,6 +39,8 @@ type SubJob struct {
 	// Config snapshot for resume
 	System        string
 	MaxIterations int
+	// SessionID links to CodeForge chat session when known.
+	SessionID string
 	// cancel running job
 	cancel context.CancelFunc
 }
@@ -68,11 +70,12 @@ func (m *SubJobManager) AllocID() string {
 	return fmt.Sprintf("sub-%d", m.seq)
 }
 
-// Put registers a job (running or finished).
+// Put registers a job (running or finished) and persists to disk.
 func (m *SubJobManager) Put(j *SubJob) {
 	m.mu.Lock()
 	m.jobs[j.ID] = j
 	m.mu.Unlock()
+	_ = j.Save()
 }
 
 // Get returns a job copy by id.
@@ -86,15 +89,18 @@ func (m *SubJobManager) Get(id string) (SubJob, bool) {
 	return *j, true
 }
 
-// GetPtr returns the live job for mutation under lock helpers.
+// update mutates a job under lock and persists afterward.
 func (m *SubJobManager) update(id string, fn func(*SubJob)) bool {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	j, ok := m.jobs[id]
 	if !ok || j == nil {
+		m.mu.Unlock()
 		return false
 	}
 	fn(j)
+	snap := *j
+	m.mu.Unlock()
+	_ = snap.Save()
 	return true
 }
 

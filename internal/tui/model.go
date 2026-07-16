@@ -3638,16 +3638,15 @@ AGENT / IDE
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.5.0
+	return `CodeForge TUI v1.6.0
 Created by NanoMind — 2026 — Apache 2.0
 
-Grok Build TUI–compatible (Phases 1–9 + G1–G7):
+Grok Build TUI–compatible (Phases 1–9 + G1–G8):
   blocks · input · themes · sessions · design plan
-  permissions/hooks · todos/tasks · ACP IDE bridge
-  Grok 4.5 · tools · sandbox · skills · personas
-  background subagents · get_subagent_output · resume_from
-Honest gaps: process-wide Landlock, full x.ai/* ACP.
-See docs/SUBAGENTS.md · docs/SKILLS.md · docs/SANDBOX.md
+  permissions/hooks · todos/tasks · ACP + x.ai/* extensions
+  Grok 4.5 · tools · Landlock/Seatbelt · skills · personas
+  background subagents · disk-persisted jobs · resume_from
+See docs/ACP.md · docs/SUBAGENTS.md · docs/SANDBOX.md
 `
 }
 

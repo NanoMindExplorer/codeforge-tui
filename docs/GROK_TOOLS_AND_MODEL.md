@@ -100,6 +100,16 @@ Grok-compatible `SKILL.md` packages (reusable procedures).
 | `resume_from` | Continue a finished job with new prompt |
 | Slash | `/subagents` list · show · cancel |
 | Tracking | Sync runs also get ids for resume |
+| Persist | `~/.codeforge/subagents/*.json` across restarts |
+
+## Phase G8 — Coulds closed ✅
+
+| Item | Detail |
+|------|--------|
+| Process Landlock | Linux process-wide write (and strict read) rules at startup |
+| Process Seatbelt | macOS `sandbox-exec` re-exec with generated profile |
+| ACP `x.ai/*` | Filesystem, git, worktree, search, terminal, session, subagent, … |
+| Subagent persist | Cross-session job store for resume_from |
 
 ### Quick start
 

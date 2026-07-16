@@ -67,9 +67,9 @@ Use this side-by-side with Grok Build TUI for a day of real work. Mark each item
 
 ## Honest remaining gaps (Could)
 
-- Process-wide Landlock/Seatbelt at startup (G4 ships per-command bwrap + soft path policy)  
-- Full Grok `x.ai/*` ACP extension methods — subset only  
+- Landlock/Seatbelt best-effort on restricted kernels/containers (see process=none in status)  
 - Provider reasoning streams as real thought tokens — synthetic thinking OK  
 - Full Grok welcome screen / pager.toml matrix — partial  
+- Grok.com billing/OAuth — out of scope  
 
 When this checklist stays green for **two weeks of daily use**, the v1.0 “Grok-compatible” claim is fair.

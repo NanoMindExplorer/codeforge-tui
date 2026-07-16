@@ -33,13 +33,32 @@ Shared flags (before the mode name):
 
 | Method | Direction | Notes |
 |--------|-----------|--------|
-| `initialize` | C→A | Protocol version + capabilities |
+| `initialize` | C→A | Protocol version + capabilities + `xaiExtensions` list |
 | `authenticate` | C→A | No-op (empty result) |
 | `session/new` | C→A | `{ cwd, mcpServers?, _meta? }` → `{ sessionId }` |
 | `session/load` | C→A | Resume CodeForge session by id |
 | `session/prompt` | C→A | Prompt blocks → streams updates → `{ stopReason }` |
 | `session/cancel` | C→A | Notification; cancels in-flight turn |
 | `session/update` | A→C | `agent_message_chunk`, `tool_call`, `tool_call_update` |
+
+### x.ai/* extensions (Grok-compatible)
+
+Advertised in `initialize` → `agentCapabilities.xaiExtensions`. Representative set:
+
+| Prefix | Methods |
+|--------|---------|
+| `x.ai/fs/*` | `list`, `exists`, `read_file`, `write_file` |
+| `x.ai/git/*` | `status`, `stage`, `commit`, `diffs`, `discard` |
+| `x.ai/git/worktree/*` | `list`, `create`, `remove`, `apply`, `gc` |
+| `x.ai/search/*` | `content`, `fuzzy/open`, `fuzzy/change` |
+| `x.ai/terminal/*` | `create`, `kill`, `output`, `wait_for_exit` |
+| `x.ai/session/*` | `fork`, `resolve_local_for_worktree_resume` |
+| `x.ai/*` | `prompt_history`, `rewind/list`, `rewind/apply`, `compact_conversation` |
+| `x.ai/subagent/*` | `list`, `get`, `cancel` |
+| `x.ai/auth/*` | `get_url`, `submit_code` (stubs — use API keys) |
+| `x.ai/feedback`, `x.ai/telemetry/status` | acknowledged |
+
+Notifications: `x.ai/search/fuzzy/status`, `x.ai/git/worktree/status` (and standard `session/update`).
 
 Permissions use the Phase 6 engine. ACP defaults to **always_approve** so IDEs are not blocked on interactive ask; use `--dont-ask` for CI lockdown.
 

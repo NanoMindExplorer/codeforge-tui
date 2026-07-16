@@ -53,6 +53,21 @@ type Server struct {
 	tx      Transport
 	// initialized
 	ready bool
+	// x.ai/terminal/* state
+	terminals map[string]*acpTerminal
+}
+
+// acpTerminal is a background shell job for x.ai/terminal extensions.
+type acpTerminal struct {
+	ID       string
+	Command  string
+	Cwd      string
+	Output   string
+	Error    string
+	ExitCode int
+	Done     bool
+	Started  time.Time
+	Ended    time.Time
 }
 
 type acpSession struct {
@@ -141,6 +156,9 @@ func (s *Server) handleRequest(req Request) {
 		// long-running: process async so cancel works
 		go s.doSessionPrompt(req)
 	default:
+		if s.handleXAI(req) {
+			return
+		}
 		s.replyError(req.ID, CodeMethodNotFound, "method not found: "+req.Method)
 	}
 }
@@ -162,6 +180,7 @@ func (s *Server) doInitialize(params json.RawMessage) InitializeResult {
 			PromptCapabilities: PromptCapabilities{
 				EmbeddedContext: true,
 			},
+			XAIExtensions: XAIExtensions(),
 		},
 		AgentInfo: ImplementationInfo{
 			Name:    "codeforge",

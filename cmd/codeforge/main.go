@@ -26,7 +26,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "1.5.0"
+	ProjectVersion = "1.6.0"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"

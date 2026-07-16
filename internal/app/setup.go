@@ -114,10 +114,16 @@ func Bootstrap(opt Options) (*Runtime, error) {
 	if !eng.IsOff() {
 		logf("✓ %s\n", eng.Summary())
 		sandbox.LogEvent("activate", map[string]any{
-			"profile": string(eng.Profile),
-			"backend": string(eng.Backend),
-			"workdir": workdir,
+			"profile":  string(eng.Profile),
+			"backend":  string(eng.Backend),
+			"process":  string(eng.ProcessBackend),
+			"workdir":  workdir,
 		})
+	}
+
+	// Load persisted subagent jobs (cross-session)
+	if n, err := tool.SubJobs.LoadFromDisk(); err == nil && n > 0 {
+		logf("✓ subagent jobs: restored %d from disk\n", n)
 	}
 
 	var extra []string

@@ -1,112 +1,610 @@
 # CodeForge
 
-> Terminal AI Coding Companion — open, modular, vendor-neutral — **dan terasa seperti dari masa depan.**
+**Terminal AI Coding Companion** — open, modular, vendor-neutral — *and it feels like the future.*
 
-**Created by NanoMind · 2026 · Apache 2.0**  
-**Codename:** Neo-Forge · **Version:** `v0.3.0`
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
+[![Version](https://img.shields.io/badge/version-v0.3.0-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
 
-Building the future of terminal AI coding, one keystroke at a time.
+| | |
+|---|---|
+| **Author** | NanoMind |
+| **Year** | 2026 |
+| **License** | Apache License 2.0 |
+| **Codename** | Neo-Forge |
+| **Version** | `v0.3.0` |
 
-## Quick Start
+CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and ship changes with git — without leaving the keyboard.
+
+---
+
+## Table of contents
+
+1. [Features](#features)
+2. [Requirements](#requirements)
+3. [Installation](#installation)
+4. [API keys & providers](#api-keys--providers)
+5. [Quick start](#quick-start)
+6. [User guide](#user-guide)
+   - [Interface layout](#interface-layout)
+   - [Modes (NORMAL / INSERT / …)](#modes)
+   - [Chat vs agent](#chat-vs-agent)
+   - [Plan vs Act (trust layer)](#plan-vs-act-trust-layer)
+   - [Review overlay](#review-overlay)
+   - [File mentions (`@file`)](#file-mentions-file)
+   - [Command palette](#command-palette)
+   - [Sessions](#sessions)
+   - [Undo / checkpoints](#undo--checkpoints)
+   - [Git helpers](#git-helpers)
+7. [Keybindings reference](#keybindings-reference)
+8. [Slash commands reference](#slash-commands-reference)
+9. [CLI flags](#cli-flags)
+10. [Environment variables](#environment-variables)
+11. [Configuration files](#configuration-files)
+12. [Typical workflows](#typical-workflows)
+13. [Architecture](#architecture)
+14. [Development & tests](#development--tests)
+15. [Distribution](#distribution)
+16. [Troubleshooting](#troubleshooting)
+17. [License & credits](#license--credits)
+
+---
+
+## Features
+
+| Area | What you get |
+|------|----------------|
+| **TUI** | 3-pane layout: **Chat** · **Diff** · **Files**. Below ~100 columns, switches to a single-pane tab mode (keys `1` / `2` / `3`). |
+| **Streaming chat** | Real-time token stream; assistant replies rendered as **Markdown** with **syntax-highlighted** code (Glamour). |
+| **Agent loop** | Tool-calling agent: `read_file`, `write_file`, `list_dir`, `grep_search`, `run_command` (sandboxed to project root). |
+| **Trust layer** | **Plan mode (default):** writes are staged → multi-file **review** before disk. **Act mode:** writes apply immediately. |
+| **Diff pane** | Rich unified diffs: gutters, `+N/-M` badges, multi-file tabs, pending badge. |
+| **Files pane** | Live project listing, AI “touched” highlights, optional git status glyphs. |
+| **Workflow** | `Ctrl+K` fuzzy palette · `@file` attachments · persistent **sessions** · `/undo` checkpoints · toasts. |
+| **Providers** | **Gemini** · **Claude** · **OpenAI-compatible** · **Ollama** (local/offline). |
+| **Theme** | Aurora Dark design tokens; light theme; optional `~/.codeforge/theme.yaml`. |
+| **Motion** | Breathing gradient borders, typewriter system messages, toast notifications. Disable with `--no-motion`. |
+| **Portable** | Pure Go, `CGO_ENABLED=0`, Termux / Android friendly (~21MB single binary). |
+
+---
+
+## Requirements
+
+- **OS:** Linux, macOS, Windows (via terminal); Termux on Android supported.
+- **Go:** 1.25+ (only if building from source).
+- **Terminal:** UTF-8; 256-color or truecolor recommended. Optional [Nerd Font](https://www.nerdfonts.com/) for richer icons (`NERD_FONT=1`).
+- **Git:** optional but recommended (status / auto-commit).
+- **API key:** at least one provider (Gemini free tier is the easiest start).
+
+---
+
+## Installation
+
+### One-line installer
 
 ```bash
-# Install (release or from source)
 curl -fsSL https://raw.githubusercontent.com/NanoMindExplorer/codeforge/main/install.sh | sh
-
-# Free Gemini key → https://aistudio.google.com/apikey
-export GEMINI_API_KEY="AIzaSy..."
-codeforge
 ```
 
-From source:
+Detects OS/arch, prefers GitHub Releases, falls back to build-from-source when no release asset exists.
+
+### Build from source
 
 ```bash
 git clone https://github.com/NanoMindExplorer/codeforge.git
 cd codeforge
+go mod tidy
 CGO_ENABLED=0 go build -ldflags="-s -w" -o codeforge ./cmd/codeforge/
-./codeforge
+sudo mv codeforge /usr/local/bin/   # or: cp codeforge "$PREFIX/bin/" on Termux
 ```
 
-## Features (v0.3.0 Neo-Forge)
+### Termux (Android)
 
-| Area | Capability |
-|------|------------|
-| **TUI** | 3-pane layout (Chat · Diff · Files), compact tab mode &lt;100 cols |
-| **Theme** | Aurora Dark design tokens · `CODEFORGE_THEME` · `~/.codeforge/theme.yaml` |
-| **Chat** | Viewport scroll · multi-line textarea · glamour markdown + syntax highlight |
-| **Diff** | Gutter line numbers · +N/-M badges · multi-file tabs · pending badge |
-| **Trust** | **Plan mode** (default) stages `write_file` → multi-file review · **Act** mode optional |
-| **Workflow** | `Ctrl+K` fuzzy palette · `@file` mention · sessions · `/undo` checkpoints |
-| **Providers** | Gemini · Claude · OpenAI-compatible · Ollama (local) |
-| **Motion** | Gradient border · typewriter system msgs · toast · `--no-motion` kill switch |
+```bash
+pkg install -y golang git
+git clone https://github.com/NanoMindExplorer/codeforge.git
+cd codeforge
+CGO_ENABLED=0 go build -ldflags="-s -w" -o codeforge ./cmd/codeforge/
+cp codeforge "$PREFIX/bin/"
+# Prefer no-motion on slow devices
+codeforge --no-motion
+```
 
-## Keybindings
+### Verify
+
+```bash
+codeforge --version
+# → codeforge 0.3.0
+```
+
+---
+
+## API keys & providers
+
+Set **at least one** environment variable before a productive session.
+
+| Provider | Environment | Notes |
+|----------|-------------|--------|
+| **Gemini** (default when set) | `GEMINI_API_KEY` | Free key: [Google AI Studio](https://aistudio.google.com/apikey) · default model `gemini-2.5-flash` |
+| **Claude** | `ANTHROPIC_API_KEY` | Default model `claude-sonnet-4-20250514` |
+| **OpenAI / compatible** | `OPENAI_API_KEY` | Optional `OPENAI_BASE_URL` (Groq, Together, Azure-style gateways, etc.) · default `gpt-4o-mini` |
+| **Ollama** (local) | — | Auto-registers if `ollama serve` is reachable · `OLLAMA_HOST`, `OLLAMA_MODEL` |
+
+Examples:
+
+```bash
+# Gemini (recommended free start)
+export GEMINI_API_KEY="AIzaSy..."
+
+# Claude
+export ANTHROPIC_API_KEY="sk-ant-..."
+
+# OpenAI-compatible endpoint
+export OPENAI_API_KEY="sk-..."
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+
+# Local Ollama
+ollama pull llama3.2
+export OLLAMA_MODEL="llama3.2"
+# optional: export OLLAMA_HOST="http://127.0.0.1:11434"
+```
+
+Persist in your shell profile (`~/.bashrc`, `~/.zshrc`) as needed.
+
+Inside CodeForge you can still switch with:
+
+- `/provider` — list / switch (`gemini`, `claude`, `openai`, `ollama`)
+- `/model` — list / switch model IDs for the current provider
+
+---
+
+## Quick start
+
+```bash
+# 1. Key
+export GEMINI_API_KEY="AIzaSy..."
+
+# 2. Open CodeForge in a project directory
+cd /path/to/your/project
+codeforge
+
+# Or pass the project path
+codeforge /path/to/your/project
+
+# Skip first-run wizard; disable animations (SSH / Termux)
+codeforge --skip-wizard --no-motion
+```
+
+**First 60 seconds inside the TUI:**
+
+1. Press **`i`** → INSERT mode (chat input).
+2. Type a question → **Enter** → stream a normal chat answer.
+3. Press **Esc** → NORMAL mode.
+4. Press **`I`** (or type `/act …`) → agent mode with tools.
+5. Press **`?`** anytime for in-app help.
+
+---
+
+## User guide
+
+### Interface layout
+
+```
+ ⚡ CodeForge   NORMAL   PLAN   gemini · flash   git:main   ▁▂▃▅   $0.01   ?=help
+
+╭─ Chat ─────────────────────────╮╭─ Diff  +12 -3 ────╮╭─ Files ────╮
+│  ▶ fix the race in worker.go  ││  worker.go         ││  ● main.go │
+│  ⠋ Agent …                     ││  12  - old        ││  ◆ agent.go│
+│    📖 read_file worker.go      ││  12  + new        ││             │
+│    ✓ 84 lines                  ││                   ││ Tools       │
+│  » _                           ││                   ││  read_file  │
+╰────────────────────────────────╯╰───────────────────╯╰─────────────╯
+  i:chat  I:/act  ⌘K:palette  @:file  Tab:pane  Shift+P:plan/act        14:02
+```
+
+| Pane | Role |
+|------|------|
+| **Chat** | Messages, tool timeline, multi-line input |
+| **Diff** | Staged or applied file changes |
+| **Files** | Project files + tools list; highlights files the agent touched |
+
+On narrow terminals (&lt; ~100 columns), only the focused pane is shown full-width. Switch with **`1`** Chat · **`2`** Diff · **`3`** Files.
+
+### Modes
+
+| Mode | How to enter | Purpose |
+|------|----------------|---------|
+| **NORMAL** | Default; **Esc** | Navigate panes, scroll, open palette, toggle Plan/Act |
+| **INSERT** | **`i`**, **`/`**, **`I`** | Type chat or slash commands; multi-line textarea |
+| **COMMAND** | **`:`** | Classic command line (slash-style actions) |
+| **PALETTE** | **Ctrl+K** | Fuzzy search over commands, files, sessions |
+| **FILE PICK** | **`@`** in INSERT | Fuzzy file picker for mentions |
+| **REVIEW** | After agent turn in Plan with pending writes | Accept/reject staged patches |
+
+Status bar badges show UI mode (**NORMAL** / **INSERT** / …) and agent write mode (**PLAN** / **ACT**).
+
+### Chat vs agent
+
+| Path | How | Tools? | Best for |
+|------|-----|--------|----------|
+| **Streaming chat** | INSERT → type natural language → Enter | No | Q&A, explanations, design discussion |
+| **Agent** | `/act <task>` or shortcuts `/read`, `/fix`, … | Yes | Edit code, search repo, run builds/tests |
+
+Agent system behavior (summary):
+
+- Prefer **read before write**
+- Uses filesystem tools under the **project workdir** only (path sandbox)
+- In **Plan** mode, `write_file` is staged until you approve
+
+### Plan vs Act (trust layer)
+
+This is the core safety model for production code.
+
+| | **PLAN** (default) | **ACT** |
+|---|-------------------|---------|
+| `read_file` / `list_dir` / `grep_search` | Free | Free |
+| `run_command` | Free (30s timeout) | Free |
+| `write_file` | **Staged** → Diff shows `⏳ PENDING` → **review UI** | **Written immediately** |
+| Toggle | `Shift+P` or `/mode plan` | `Shift+P` or `/mode act` |
+
+**Recommendation:** keep **PLAN** for unfamiliar tasks; use **ACT** only for tight, trusted iteration loops.
+
+### Review overlay
+
+When the agent finishes a turn and there are pending writes:
 
 | Key | Action |
 |-----|--------|
-| `i` | INSERT (chat) |
-| `I` | INSERT with `/act` |
+| `j` / `k` | Move between changed files |
+| `Space` | Toggle accept / reject for current file |
+| `a` | Accept all |
+| `r` | Reject all |
+| `Enter` | Apply accepted files to disk (+ checkpoints) |
+| `Esc` | Cancel review (leave pending / discard flow as implemented) |
+
+Accepted files are written to disk and previous contents are checkpointed for `/undo`.
+
+### File mentions (`@file`)
+
+1. Enter **INSERT** (`i`).
+2. Press **`@`** → fuzzy file picker opens.
+3. Type to filter · `↑`/`↓` · **Enter** to select.
+4. The prompt gains `@path` and the file body is **attached** as context for the next send.
+
+Useful for: “explain this file”, “refactor this module”, without a separate `/read` first.
+
+### Command palette
+
+**Ctrl+K** opens a fuzzy overlay fed by three sources:
+
+1. Slash commands (`/act`, `/fix`, …)
+2. Project files
+3. Saved sessions
+
+Navigate with `↑`/`↓` (or `j`/`k`), confirm with **Enter**, close with **Esc**.
+
+### Sessions
+
+- Conversations are auto-saved under `~/.codeforge/sessions/`.
+- Metadata includes messages, provider/model, workdir, cumulative cost/tokens, and a one-line preview.
+- **`/sessions`** — list recent sessions.
+- **`/sessions <id>`** — resume a session (restores transcript + provider/model when possible).
+- Also available from the **Ctrl+K** palette under category `session`.
+
+### Undo / checkpoints
+
+- When a write is **applied** (review accept, or Act mode), a snapshot of the previous content is stored under `~/.codeforge/checkpoints/<session-id>/`.
+- **`/undo`** restores the **last** written file from its checkpoint.
+
+This complements—not replaces—git. Prefer git commits for permanent history.
+
+### Git helpers
+
+If the workdir is a git repository (CodeForge may init one if missing):
+
+| Command | Effect |
+|---------|--------|
+| `/status` | Show branch + working tree status; refresh file glyphs |
+| `/commit` | `git add -A` + conventional-style auto commit via go-git |
+
+---
+
+## Keybindings reference
+
+### Global
+
+| Key | Action |
+|-----|--------|
+| `Ctrl+C` | Quit (session is saved) |
+| `Ctrl+L` | Clear terminal screen |
+| `q` | Quit from NORMAL (session is saved) |
+| `?` | Show help text in chat |
+
+### NORMAL mode
+
+| Key | Action |
+|-----|--------|
+| `i` | INSERT (empty chat input) |
+| `I` | INSERT with `/act ` prefilled |
+| `/` | INSERT with `/` prefilled |
+| `:` | COMMAND line |
 | `Ctrl+K` | Command palette |
-| `@` | File mention picker |
-| `Shift+P` | Toggle Plan ↔ Act |
-| `Tab` / `1` `2` `3` | Switch panes |
-| `j` `k` `g` `G` | Scroll |
-| `?` | Help |
-| `q` | Quit |
+| `Shift+P` (`P`) | Toggle Plan ↔ Act |
+| `1` / `2` / `3` | Focus Chat / Diff / Files |
+| `Tab` / `Shift+Tab` | Cycle panes |
+| `j` `k` / arrows | Scroll chat (or Diff navigation) |
+| `g` / `G` | Top / bottom of chat |
+| `PgUp` / `PgDn` · `Ctrl+U` / `Ctrl+D` | Page scroll |
+| `n` / `p` | Next / previous file tab in Diff pane |
 
-## Slash commands
+### INSERT mode
 
+| Key | Action |
+|-----|--------|
+| Type | Edit multi-line prompt |
+| `Enter` | Send chat **or** run slash command if line starts with `/` |
+| `Esc` | Back to NORMAL |
+| `@` | Open file mention picker |
+| `Ctrl+K` | Open palette |
+| `↑` / `↓` | Input history (previous prompts) |
+
+### Review mode
+
+See [Review overlay](#review-overlay).
+
+---
+
+## Slash commands reference
+
+Type in INSERT (prefix `/`) or via `:` / palette. Aliases in parentheses.
+
+### Agent & code
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/act` (`/a`) | Free-form agent task with tools | `/act add retries to HTTP client` |
+| `/read` (`/r`) | Read and display a file | `/read internal/agent/agent.go` |
+| `/ls` (`/list`) | List a directory | `/ls cmd` |
+| `/grep` (`/find`) | Search project with regex | `/grep TODO` |
+| `/run` | Run a shell command in project root (via agent) | `/run go test ./...` |
+| `/explain` (`/e`) | Deep explanation of a file | `/explain main.go` |
+| `/fix` | Find and fix bugs in a file | `/fix handler.go` |
+
+### Provider & session
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/provider` (`/p`) | List or switch provider | `/provider claude` |
+| `/model` (`/m`) | List or switch model | `/model gemini-2.5-pro` |
+| `/mode` | Show or set Plan/Act | `/mode plan` · `/mode act` |
+| `/sessions` | List or resume sessions | `/sessions` · `/sessions 20260716-101500` |
+| `/undo` | Restore last applied write | `/undo` |
+| `/cost` (`/c`) | Session tokens, cost, duration | `/cost` |
+| `/clear` | Clear chat + start a fresh session id | `/clear` |
+
+### Git & meta
+
+| Command | Description |
+|---------|-------------|
+| `/status` (`/s`) | Git status |
+| `/commit` | Stage all + auto-commit |
+| `/help` (`/h` `/?`) | In-app help |
+| `/about` | Version / author / stack |
+| `/quit` (`/q` `/exit`) | Exit CodeForge |
+
+Unknown `/…` strings are forwarded to the **agent** as a task.
+
+**Tab** in the command line autocompletes known slash commands.
+
+---
+
+## CLI flags
+
+```text
+codeforge [workdir] [flags]
+
+  workdir          Optional project directory (default: current directory)
+
+  --no-motion      Disable animations (slow SSH / Termux)
+  --skip-wizard    Skip first-run setup wizard
+  -y, --yes        Same as --skip-wizard
+  -h, --help       Print CLI help
+  -v, --version    Print version
 ```
-/act /read /ls /grep /run /explain /fix
-/provider /model /mode /sessions /undo
-/status /commit /cost /clear /help /about /quit
+
+Examples:
+
+```bash
+codeforge
+codeforge ~/src/myapp
+codeforge --skip-wizard --no-motion ~/src/myapp
 ```
 
-## Plan vs Act
+---
 
-- **PLAN** (default, safe): agent may read/search/run freely; every `write_file` is **staged** and shown in Diff with `⏳ PENDING`. After the turn, a review overlay lets you accept/reject per file.
-- **ACT**: writes apply immediately (power-user / rapid iteration). Toggle with `Shift+P` or `/mode act`.
+## Environment variables
 
-## Sessions & undo
-
-- Conversations auto-save under `~/.codeforge/sessions/`
-- `/sessions` lists and resumes
-- Every applied write is checkpointed; `/undo` restores the last file
-
-## Environment
-
-| Var | Purpose |
-|-----|---------|
-| `GEMINI_API_KEY` | Google Gemini (default free tier) |
-| `ANTHROPIC_API_KEY` | Claude |
-| `OPENAI_API_KEY` / `OPENAI_BASE_URL` | OpenAI or compatible endpoint |
-| `OLLAMA_HOST` / `OLLAMA_MODEL` | Local Ollama |
+| Variable | Purpose |
+|----------|---------|
+| `GEMINI_API_KEY` | Google Gemini |
+| `ANTHROPIC_API_KEY` | Anthropic Claude |
+| `OPENAI_API_KEY` | OpenAI or compatible API |
+| `OPENAI_BASE_URL` | Override API base (default `https://api.openai.com/v1`) |
+| `OLLAMA_HOST` | Ollama base URL (default `http://127.0.0.1:11434`) |
+| `OLLAMA_MODEL` | Default Ollama model (default `llama3.2`) |
 | `CODEFORGE_THEME` | `aurora` (default) or `light` |
-| `CODEFORGE_NO_MOTION=1` | Disable animations |
-| `NERD_FONT=1` | Prefer Nerd Font glyphs |
+| `CODEFORGE_NO_MOTION` | `1` / `true` disables motion |
+| `NERD_FONT` / `NERD_FONTS` | Prefer Nerd Font file/git glyphs |
 
-## Flags
+---
 
+## Configuration files
+
+| Path | Purpose |
+|------|---------|
+| `~/.config/codeforge/config.yaml` | Default provider, theme, git, permissions (example created on first run) |
+| `~/.codeforge/theme.yaml` | Optional color token overrides |
+| `~/.codeforge/sessions/*.json` | Saved conversations |
+| `~/.codeforge/checkpoints/<session-id>/` | Pre-write file snapshots for `/undo` |
+
+Example `config.yaml` keys (see generated file for full template):
+
+```yaml
+default_provider: gemini
+theme: aurora
+permissions:
+  require_confirm_write: true   # Plan-style staging when true
+  require_confirm_shell: true
+  require_confirm_push: true
+git:
+  auto_commit: true
+  commit_style: conventional
+  branch_prefix: ai/
 ```
-codeforge [workdir] [--no-motion] [--skip-wizard] [-v] [-h]
+
+---
+
+## Typical workflows
+
+### 1. Ask about the codebase
+
+```text
+i
+@ → pick main.go
+Explain the control flow of this file
+Enter
 ```
 
-## Tech stack
+### 2. Safe agent edit (Plan mode)
 
-- Go 1.25 · Bubble Tea · Bubbles · Lipgloss · Glamour · Harmonica  
-- go-colorful · sahilm/fuzzy · muesli/reflow · go-git · Viper  
-- Pure Go, `CGO_ENABLED=0` (Termux / Android friendly)
+```text
+Confirm status bar shows PLAN (or /mode plan)
+I
+fix the nil pointer in internal/foo.go and add a unit test
+Enter
+… watch tools in Chat, pending diff in Diff …
+Complete review: j/k · Space · Enter to apply
+/commit          # optional
+```
+
+### 3. Fast iteration (Act mode)
+
+```text
+Shift+P          # → ACT (writes immediate)
+/act rename Foo to Bar across the package
+/undo            # if the last write was wrong
+```
+
+### 4. Resume yesterday’s session
+
+```text
+/sessions
+/sessions 20260715-183022
+```
+
+### 5. Offline / local model
+
+```bash
+ollama serve
+ollama pull qwen2.5-coder
+export OLLAMA_MODEL=qwen2.5-coder
+codeforge --skip-wizard
+# then: /provider ollama
+```
+
+---
 
 ## Architecture
 
-```
+```text
+cmd/codeforge/          CLI entry, wizard, provider registration
 internal/
-  agent/ provider/ tool/ git/ diff/ config/   # core (stable)
-  theme/ keymap/ session/ checkpoint/        # Neo-Forge foundation
-  ui/{components,markdown,diffview,palette,filepicker,review}
-  tui/                                       # Bubble Tea orchestrator
+  agent/                Tool-calling agent loop (events → TUI)
+  provider/             Gemini · Claude · OpenAI · Ollama · MCP scaffold
+  tool/                 Registry + sandboxed tools + StagedWriter (Plan/Act)
+  git/  diff/  config/  Supporting core
+  theme/                Design tokens (single source of color truth)
+  keymap/               Central keybindings
+  session/              Persist / resume conversations
+  checkpoint/           Local undo snapshots
+  ui/
+    components/         Panel, toast, badges
+    markdown/           Glamour wrapper
+    diffview/           Rich diff renderer
+    palette/            Fuzzy command palette
+    filepicker/         @file picker
+    review/             Multi-file Plan review UI
+  tui/                  Bubble Tea orchestrator (chat, panes, routing)
 ```
 
-## License
+Design principles (Neo-Forge / Terminal Glass):
 
-Apache License 2.0 · **NanoMind** — Original Creator — 2026
+- **Depth over flatness** — elevation via surface/border tokens  
+- **Motion carries meaning** — not decoration; kill-switch available  
+- **Color is status language** — cyan AI · violet agent · emerald success · rose danger · amber attention  
+- **Trust before write** — Plan mode default  
+
+Strategy document: [`CODEFORGE_STRATEGY.md`](./CODEFORGE_STRATEGY.md).
+
+---
+
+## Development & tests
+
+```bash
+git clone https://github.com/NanoMindExplorer/codeforge.git
+cd codeforge
+go mod tidy
+
+# Unit + smoke tests
+go test ./...
+
+# Build
+CGO_ENABLED=0 go build -ldflags="-s -w" -o codeforge ./cmd/codeforge/
+
+# Run against this repo
+export GEMINI_API_KEY=...
+./codeforge --skip-wizard .
+```
+
+CI (GitHub Actions): on push/PR runs `go test ./...` and a CGO-free build; version tags can trigger GoReleaser (see [`.goreleaser.yaml`](./.goreleaser.yaml)).
+
+---
+
+## Distribution
+
+| Artifact | Location |
+|----------|----------|
+| Install script | [`install.sh`](./install.sh) |
+| GoReleaser config | [`.goreleaser.yaml`](./.goreleaser.yaml) |
+| CI workflow | [`.github/workflows/ci.yml`](./.github/workflows/ci.yml) |
+
+Release matrix (intended): `linux/amd64`, `linux/arm64` (Termux), `darwin/arm64`, `windows/amd64`.
+
+---
+
+## Troubleshooting
+
+| Symptom | What to try |
+|---------|-------------|
+| “Provider config” / no API key | Export `GEMINI_API_KEY` (or another provider). Re-run without empty keys. Use `--skip-wizard` once configured. |
+| Empty / hanging stream | Check network and key validity. Gemini free tier has rate limits. |
+| Agent can’t see files outside project | By design — tools are sandboxed to the workdir. |
+| Writes don’t appear on disk | You are likely in **PLAN** mode — finish the **review** overlay (`Enter` to apply). Or switch `/mode act`. |
+| Want to reverse a write | `/undo` for last applied file; or use git. |
+| TUI feels laggy (SSH / phone) | `codeforge --no-motion` or `CODEFORGE_NO_MOTION=1`. |
+| Icons look broken | Unset Nerd Font env, or install a Nerd Font and set `NERD_FONT=1`. |
+| Ollama not listed | Ensure `ollama serve` is up; check `OLLAMA_HOST`. |
+| Custom OpenAI proxy fails | Verify `OPENAI_BASE_URL` has no trailing slash issues; must expose `/chat/completions`. |
+| Binary large (~21MB) | Expected with Glamour/Chroma; still pure Go / no CGO. |
+
+---
+
+## License & credits
+
+**Apache License 2.0** — see [`LICENSE`](./LICENSE).
+
+**Created by NanoMind — 2026**
+
+Stack: Go · [Bubble Tea](https://github.com/charmbracelet/bubbletea) · Bubbles · Lipgloss · Glamour · go-git · Viper · and friends.
+
+> *Terminal AI coding companion — open, modular, vendor-neutral — and it feels like the future.*

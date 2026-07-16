@@ -25,7 +25,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "0.7.0"
+	ProjectVersion = "0.8.0"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -301,7 +301,7 @@ func printBanner() {
 	fmt.Printf(`
 ╔══════════════════════════════════════════════════════════════╗
 ║   CodeForge TUI v%s  |  by %s  |  %s                 ║
-║   Tier-3 · Headless · Plugins · Sessions · Multi-Provider    ║
+║   Grok-style TUI · Plan/Act · Headless · Plugins · GitHub    ║
 ╚══════════════════════════════════════════════════════════════╝
 `, ProjectVersion, ProjectAuthor, ProjectYear)
 }

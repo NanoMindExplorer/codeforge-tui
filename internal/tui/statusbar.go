@@ -7,38 +7,38 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/codeforge/tui/internal/keymap"
 	"github.com/codeforge/tui/internal/theme"
 )
 
+// StatusBarModel is the Grok-style footer strip.
 type StatusBarModel struct {
-	width     int
-	Provider  string
-	ModelName string
-	Mode      string // NORMAL / INSERT / COMMAND
-	AgentMode string // PLAN / ACT
-	Branch    string
-	Workdir   string
-	Cost      float64
-	Tokens    int
-	Streaming bool
-	Spark     []float64 // token rate samples
-	// GitHub integration indicators
+	width      int
+	Provider   string
+	ModelName  string
+	Mode       string // PROMPT / SCROLL / …
+	AgentMode  string // PLAN / ACT
+	Branch     string
+	Workdir    string
+	Cost       float64
+	Tokens     int
+	Streaming  bool
+	Spark      []float64
 	GitHubUser string
 	GitHubRepo string
 	GitHubOK   bool
-	// Budget
 	BudgetMax  float64
-	BudgetWarn bool // over warn threshold
-	BudgetStop bool // over max
+	BudgetWarn bool
+	BudgetStop bool
+	ThemeName  string
 }
 
 func NewStatusBarModel() StatusBarModel {
 	return StatusBarModel{
 		Provider:  "gemini",
-		Mode:      "NORMAL",
+		Mode:      "PROMPT",
 		AgentMode: "PLAN",
 		Branch:    "main",
+		ThemeName: "groknight",
 	}
 }
 
@@ -57,29 +57,34 @@ func (s StatusBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return s, nil
 }
 
-func (s StatusBarModel) View() string { return s.ViewTop() }
+func (s StatusBarModel) View() string { return s.ViewFooter() }
 
+// ViewTop is a slim brand strip (optional; often empty in Grok-like layout).
 func (s StatusBarModel) ViewTop() string {
+	// Grok puts almost everything in the footer — keep top minimal / empty for space
+	return ""
+}
+
+// ViewFooter Grok-style bottom info bar.
+func (s StatusBarModel) ViewFooter() string {
 	t := theme.Current()
-	brand := lipgloss.NewStyle().Bold(true).Foreground(t.AccentAI).Padding(0, 1).Render("⚡ CodeForge")
 	mode := theme.ModeBadge(s.Mode)
 	agent := theme.ModeBadge(s.AgentMode)
 
-	aiStatus := s.Provider
+	model := s.Provider
 	if s.ModelName != "" {
-		aiStatus = s.Provider + " · " + shortModel(s.ModelName)
+		model = s.Provider + " · " + shortModel(s.ModelName)
 	}
 	if s.Streaming {
-		aiStatus = "⠋ " + aiStatus
+		model = "⠋ " + model
+	}
+	model = lipgloss.NewStyle().Foreground(t.AccentAssistant).Render(model)
+
+	git := lipgloss.NewStyle().Foreground(t.TextMuted).Render("git:" + s.Branch)
+	if s.GitHubOK && s.GitHubUser != "" {
+		git = lipgloss.NewStyle().Foreground(t.TextSecondary).Render("gh:@" + s.GitHubUser + " · " + s.Branch)
 	}
 
-	spark := theme.Sparkline(s.Spark)
-	ghPart := ""
-	if s.GitHubOK && s.GitHubUser != "" {
-		ghPart = "  gh:@" + s.GitHubUser
-	} else if s.GitHubRepo != "" {
-		ghPart = "  gh:?"
-	}
 	costPart := fmt.Sprintf("$%.4f", s.Cost)
 	if s.BudgetMax > 0 {
 		costPart = fmt.Sprintf("$%.4f/$%.2f", s.Cost, s.BudgetMax)
@@ -89,49 +94,44 @@ func (s StatusBarModel) ViewTop() string {
 			costPart = "⚠" + costPart
 		}
 	}
-	info := fmt.Sprintf(" %s  git:%s%s  %s  %s ",
-		aiStatus, s.Branch, ghPart, spark, costPart)
+	cost := lipgloss.NewStyle().Foreground(t.TextSecondary).Render(costPart)
+	spark := theme.Sparkline(s.Spark)
+	clock := lipgloss.NewStyle().Foreground(t.TextMuted).Render(time.Now().Format("15:04"))
+	themeN := lipgloss.NewStyle().Foreground(t.TextMuted).Render(theme.Name())
 
-	helpHint := lipgloss.NewStyle().Foreground(t.TextMuted).Render("?=help  ⌘K  /gh  q")
+	left := lipgloss.JoinHorizontal(lipgloss.Left, mode, " ", agent, "  ", model, "  ", git)
+	right := lipgloss.JoinHorizontal(lipgloss.Right, spark, "  ", cost, "  ", themeN, "  ", clock)
 
-	middleWidth := s.width - lipgloss.Width(brand) - lipgloss.Width(mode) - lipgloss.Width(agent) - lipgloss.Width(helpHint) - 3
-	if middleWidth < 0 {
-		middleWidth = 0
-	}
-	middleInfo := lipgloss.NewStyle().Foreground(t.TextSecondary).Width(middleWidth).Render(info)
-
-	return theme.StatusBarStyle(s.width).Render(
-		lipgloss.JoinHorizontal(lipgloss.Left, brand, mode, " ", agent, middleInfo, helpHint),
-	)
-}
-
-func (s StatusBarModel) ViewBottom() string {
-	t := theme.Current()
-	left := keymap.Default().ShortHelp()
-	right := time.Now().Format("15:04")
 	pad := s.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
 	if pad < 1 {
 		pad = 1
 	}
+	line := left + strings.Repeat(" ", pad) + right
+	return theme.StatusBarStyle(s.width).Padding(0, 1).Render(line)
+}
+
+// ViewBottom keeps API used by model (hints row).
+func (s StatusBarModel) ViewBottom() string {
+	t := theme.Current()
+	hints := "tab focus  @ file  / commands  ctrl+k palette  shift+tab plan/act  ctrl+b panels  ? help"
+	if theme.CompactMode() {
+		hints = "tab · @ · / · ⌘k · S-tab · ?"
+	}
 	return lipgloss.NewStyle().
-		Background(t.BgElevated).
 		Foreground(t.TextMuted).
+		Background(t.BgBase).
 		Width(s.width).
 		Padding(0, 1).
-		Render(left + strings.Repeat(" ", pad) + right)
+		Render(hints)
 }
 
 func shortModel(id string) string {
-	// claude-sonnet-4-20250514 → sonnet-4
 	parts := strings.Split(id, "-")
-	if len(parts) >= 2 {
-		// take last meaningful chunks
-		if len(id) > 24 {
-			if len(parts) >= 3 {
-				return parts[1] + "-" + parts[2]
-			}
-			return id[:20] + "…"
+	if len(id) > 22 {
+		if len(parts) >= 3 {
+			return parts[1] + "-" + parts[2]
 		}
+		return id[:18] + "…"
 	}
 	return id
 }

@@ -8,8 +8,6 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 )
 
-// Style helpers — all styling flows through Current() tokens.
-
 func StyleTextPrimary() lipgloss.Style {
 	t := Current()
 	return lipgloss.NewStyle().Foreground(t.TextPrimary)
@@ -32,12 +30,12 @@ func StyleUser() lipgloss.Style {
 
 func StyleAI() lipgloss.Style {
 	t := Current()
-	return lipgloss.NewStyle().Foreground(t.AccentAI)
+	return lipgloss.NewStyle().Foreground(t.AccentAssistant)
 }
 
 func StyleAgent() lipgloss.Style {
 	t := Current()
-	return lipgloss.NewStyle().Foreground(t.AccentAgent)
+	return lipgloss.NewStyle().Foreground(t.AccentTool)
 }
 
 func StyleSuccess() lipgloss.Style {
@@ -57,11 +55,31 @@ func StyleWarning() lipgloss.Style {
 
 func StyleHeader() lipgloss.Style {
 	t := Current()
-	return lipgloss.NewStyle().Bold(true).Foreground(t.AccentAI)
+	return lipgloss.NewStyle().Bold(true).Foreground(t.AccentUser)
 }
 
-// PaneBorder returns a rounded border style for a pane.
-// When active and motion is on, border uses BorderActive; otherwise BorderDim.
+// AccentBar paints a vertical accent column (Grok scrollback block style).
+func AccentBar(color lipgloss.Color, height int) string {
+	if height < 1 {
+		height = 1
+	}
+	line := lipgloss.NewStyle().Foreground(color).Render("┃")
+	var b strings.Builder
+	for i := 0; i < height; i++ {
+		if i > 0 {
+			b.WriteByte('\n')
+		}
+		b.WriteString(line)
+	}
+	return b.String()
+}
+
+// BlockPrefix returns "┃ " in the role accent color.
+func BlockPrefix(color lipgloss.Color) string {
+	return lipgloss.NewStyle().Foreground(color).Render("┃ ")
+}
+
+// PaneBorder for optional side drawers.
 func PaneBorder(active bool, width, height int) lipgloss.Style {
 	t := Current()
 	borderColor := t.BorderDim
@@ -79,8 +97,7 @@ func PaneBorder(active bool, width, height int) lipgloss.Style {
 		Height(height)
 }
 
-// GradientBorder draws a breathing gradient top border (BorderActive → BorderGlow).
-// t is the animation phase [0,1). Returns a string of colored ─ characters.
+// GradientBorder breathing top border (BorderActive → BorderGlow).
 func GradientBorder(width int, phase float64) string {
 	if width <= 0 {
 		return ""
@@ -103,16 +120,14 @@ func GradientBorder(width int, phase float64) string {
 	return b.String()
 }
 
-// StatusBarBg is the top/bottom bar background style.
 func StatusBarStyle(width int) lipgloss.Style {
 	t := Current()
 	return lipgloss.NewStyle().
-		Background(t.BgElevated).
+		Background(t.BgSurface).
 		Foreground(t.TextSecondary).
 		Width(width)
 }
 
-// OverlayStyle for modals / command palette.
 func OverlayStyle(width int) lipgloss.Style {
 	t := Current()
 	return lipgloss.NewStyle().
@@ -124,21 +139,21 @@ func OverlayStyle(width int) lipgloss.Style {
 		Width(width)
 }
 
-// ModeBadge returns a colored badge for NORMAL/INSERT/COMMAND/PLAN/ACT.
+// ModeBadge Grok-style session mode pills.
 func ModeBadge(mode string) string {
 	t := Current()
 	var bg lipgloss.Color
-	switch mode {
-	case "NORMAL":
+	switch strings.ToUpper(mode) {
+	case "PROMPT", "INSERT":
+		bg = t.AccentUser
+	case "SCROLL", "NORMAL":
 		bg = t.Success
-	case "INSERT":
-		bg = t.Warning
-	case "COMMAND":
+	case "COMMAND", "PALETTE":
 		bg = t.Info
 	case "PLAN":
-		bg = t.AccentAI
+		bg = t.AccentPlan
 	case "ACT":
-		bg = t.AccentAgent
+		bg = t.AccentRunning
 	case "REVIEW":
 		bg = t.AccentFocus
 	default:
@@ -147,18 +162,36 @@ func ModeBadge(mode string) string {
 	return lipgloss.NewStyle().
 		Bold(true).
 		Background(bg).
-		Foreground(lipgloss.Color("#0A0E14")).
+		Foreground(t.BgBase).
 		Padding(0, 1).
 		Render(mode)
 }
 
-// Sparkline renders a mini bar chart from values (0..1 each), max 8 chars.
+// PromptFrame styles the bottom composer (Grok prompt widget).
+func PromptFrame(width int, focused bool) lipgloss.Style {
+	t := Current()
+	border := t.PromptBorder
+	if focused {
+		border = t.AccentUser
+	}
+	pad := 1
+	if CompactMode() {
+		pad = 0
+	}
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(border).
+		Background(t.BgElevated).
+		Padding(pad, 1).
+		Width(width)
+}
+
+// Sparkline mini bars.
 func Sparkline(values []float64) string {
 	blocks := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
 	if len(values) == 0 {
 		return strings.Repeat(string(blocks[0]), 8)
 	}
-	// Take last 8
 	start := 0
 	if len(values) > 8 {
 		start = len(values) - 8
@@ -175,8 +208,8 @@ func Sparkline(values []float64) string {
 		idx := int(v * float64(len(blocks)-1))
 		b.WriteRune(blocks[idx])
 	}
-	for b.Len() < 8 {
+	for lipgloss.Width(b.String()) < 8 {
 		b.WriteRune(blocks[0])
 	}
-	return lipgloss.NewStyle().Foreground(t.AccentAI).Render(b.String())
+	return lipgloss.NewStyle().Foreground(t.AccentUser).Render(b.String())
 }

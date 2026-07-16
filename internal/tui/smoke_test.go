@@ -33,29 +33,27 @@ func TestSmokeRender(t *testing.T) {
 		t.Fatalf("view missing brand:\n%s", truncateView(view))
 	}
 
-	// press i (insert)
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("i")})
-	m = nm.(Model)
-	// help
+	// Already prompt-focused (Grok simple mode)
+	// help via ?
 	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
 	m = nm.(Model)
 	// spinner tick should not panic
 	nm, _ = m.Update(SpinnerTickMsg{})
 	m = nm.(Model)
 
-	// compact layout
+	// narrow layout
 	nm, _ = m.Update(tea.WindowSizeMsg{Width: 70, Height: 30})
 	m = nm.(Model)
 	_ = m.View()
 
-	// back to NORMAL then toggle plan/act with Shift+P
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = nm.(Model)
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("P")})
+	// Shift+Tab toggles Plan/Act
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
 	m = nm.(Model)
 	if m.agentMode != tool.ModeAct {
-		t.Fatalf("expected ACT after Shift+P, got mode=%v agent=%v", m.mode, m.agentMode)
+		t.Fatalf("expected ACT after Shift+Tab, got mode=%v agent=%v", m.mode, m.agentMode)
 	}
+	// Theme cycle
+	_ = m.executeSlashCommand("/theme")
 }
 
 func TestModelSwitchSlash(t *testing.T) {

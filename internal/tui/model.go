@@ -30,8 +30,8 @@ import (
 	"github.com/codeforge/tui/internal/ui/review"
 )
 
-// Compact breakpoint: single-pane tab mode below this width.
-const compactBreakpoint = 100
+// Grok-style layout: full-width scrollback + bottom prompt.
+// Side drawers (diff/files) toggle with Ctrl+B — off by default like Grok.
 
 type Model struct {
 	cfg         *config.Config
@@ -41,12 +41,14 @@ type Model struct {
 	workdir     string
 	keys        keymap.Map
 
-	width      int
-	height     int
-	activePane Pane
-	mode       Mode
-	agentMode  tool.WriteMode // Plan default
-	compact    bool           // single-pane mode
+	width  int
+	height int
+	// focusPrompt true = Grok "prompt focused"; false = scrollback focused
+	focusPrompt bool
+	mode        Mode
+	agentMode   tool.WriteMode // Plan default
+	showPanels  bool           // side drawers Diff+Files
+	activePane  Pane           // when panels on
 
 	chat    ChatModel
 	diff    DiffModel
@@ -61,12 +63,15 @@ type Model struct {
 	streamCh <-chan provider.StreamToken
 	agentCh  <-chan agent.Event
 
-	session   *session.Session
-	ghClient  *gh.Client
-	quitting  bool
-	startTime time.Time
-	totalCost float64
+	session     *session.Session
+	ghClient    *gh.Client
+	quitting    bool
+	startTime   time.Time
+	totalCost   float64
 	totalTokens int
+
+	// Esc double-press (Grok: clear prompt / rewind)
+	lastEsc time.Time
 
 	// motion
 	borderPhase float64
@@ -105,6 +110,9 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 	if rb != nil && rb.Text != "" {
 		chat.SetRules(rb.Text)
 	}
+	// Grok simple mode: start with prompt focused (ready to type)
+	chat.mode = ModeInsert
+	chat.FocusInput()
 	m := Model{
 		cfg:         cfg,
 		providerReg: provReg,
@@ -112,9 +120,11 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		gitRepo:     repo,
 		workdir:     workdir,
 		keys:        keymap.Default(),
-		activePane:  PaneChat,
-		mode:        ModeNormal,
+		focusPrompt: true,
+		mode:        ModeInsert,
 		agentMode:   tool.ModePlan,
+		showPanels:  false,
+		activePane:  PaneChat,
 		startTime:   time.Now(),
 		chat:        chat,
 		diff:        NewDiffModel(),
@@ -188,10 +198,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.compact = msg.Width < compactBreakpoint
 		m.recalcSizes()
-		m.palette.SetSize(msg.Width, msg.Height)
-		m.picker.Width = min(50, msg.Width-4)
 		m.review.Width = msg.Width
 		m.review.Height = msg.Height - 2
 
@@ -204,24 +211,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "ctrl+l":
 			return m, tea.ClearScreen
+		case "ctrl+b":
+			// Toggle side panels (diff/files) — Grok is single-column by default
+			m.showPanels = !m.showPanels
+			m.recalcSizes()
+			return m, nil
+		case "ctrl+k":
+			m.openPalette()
+			return m, nil
+		case "shift+tab":
+			// Grok: cycle session write mode Plan ↔ Act
+			m.toggleAgentMode()
+			return m, nil
 		}
 
-		// ── Review mode ─────────────────────────────
+		// ── Review / Palette / File pick / Command ──
 		if m.mode == ModeReview {
 			return m.updateReview(msg)
 		}
-
-		// ── Palette ─────────────────────────────────
 		if m.mode == ModePalette {
 			return m.updatePalette(msg)
 		}
-
-		// ── File picker ─────────────────────────────
 		if m.mode == ModeFilePick {
 			return m.updatePicker(msg)
 		}
-
-		// ── Command mode ────────────────────────────
 		if m.mode == ModeCommand {
 			newCmd, c := m.command.Update(msg)
 			m.command = newCmd.(CommandModel)
@@ -231,7 +244,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.command.Done {
 				action := m.command.FinalValue
 				m.command = NewCommandModel()
-				m.mode = ModeNormal
+				m.focusPrompt = true
+				m.mode = ModeInsert
+				m.chat.FocusInput()
 				if c2 := m.executeSlashCommand(action); c2 != nil {
 					cmds = append(cmds, c2)
 				}
@@ -240,13 +255,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
-		// ── INSERT mode ─────────────────────────────
-		if m.mode == ModeInsert {
-			switch msg.String() {
-			case "esc":
+		// ── Tab: Grok focus swap prompt ↔ scrollback ─
+		if msg.String() == "tab" {
+			m.focusPrompt = !m.focusPrompt
+			if m.focusPrompt {
+				m.mode = ModeInsert
+				m.chat.FocusInput()
+			} else {
 				m.mode = ModeNormal
 				m.chat.BlurInput()
-				m.chat.mode = ModeNormal
+			}
+			m.syncStatus()
+			return m, nil
+		}
+
+		// ── PROMPT focused (Grok simple default) ─────
+		if m.focusPrompt {
+			switch msg.String() {
+			case "esc":
+				// Grok: double Esc clears prompt; single focuses scrollback if empty
+				now := time.Now()
+				if now.Sub(m.lastEsc) < 800*time.Millisecond && m.chat.InputValue() != "" {
+					m.chat.ClearInput()
+					m.lastEsc = time.Time{}
+					return m, nil
+				}
+				m.lastEsc = now
+				if strings.TrimSpace(m.chat.InputValue()) == "" {
+					m.focusPrompt = false
+					m.mode = ModeNormal
+					m.chat.BlurInput()
+				}
 				return m, nil
 			case "enter":
 				if m.chat.streaming {
@@ -258,15 +297,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				if strings.HasPrefix(inp, "/") {
 					m.chat.ClearInput()
-					m.mode = ModeNormal
-					m.chat.BlurInput()
+					// stay on prompt after slash (Grok-like)
 					if c := m.executeSlashCommand(inp); c != nil {
 						cmds = append(cmds, c)
 					}
 					return m, tea.Batch(cmds...)
 				}
 				if m.budgetBlocks() {
-					m.chat.AddSystemMessage("⛔ Budget exceeded — agent/chat blocked (see /budget)")
+					m.chat.AddSystemMessage("⛔ Budget exceeded — see /budget")
 					return m, nil
 				}
 				if c := m.chat.Submit(); c != nil {
@@ -275,15 +313,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, tea.Batch(cmds...)
 			case "@":
-				// open file picker; also type @ into input after selection
 				m.picker.Open()
 				m.mode = ModeFilePick
 				return m, nil
-			case "ctrl+k":
-				m.openPalette()
-				return m, nil
+			case "pgup", "pgdown":
+				// Grok: page scroll while prompt focused
+				m.chat.mode = ModeNormal
+				nc, c := m.chat.Update(msg)
+				m.chat = nc.(ChatModel)
+				m.chat.mode = ModeInsert
+				if c != nil {
+					cmds = append(cmds, c)
+				}
+				return m, tea.Batch(cmds...)
 			}
-			// forward to chat textarea
+			// Any other key → textarea
+			m.mode = ModeInsert
+			m.chat.mode = ModeInsert
 			nc, c := m.chat.Update(msg)
 			m.chat = nc.(ChatModel)
 			if c != nil {
@@ -293,45 +339,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 
-		// ── NORMAL mode ─────────────────────────────
+		// ── SCROLLBACK focused ───────────────────────
 		switch msg.String() {
-		case "i":
+		case "esc":
+			// stay on scrollback
+			return m, nil
+		case "i", "space":
+			// Grok: focus prompt
+			m.focusPrompt = true
 			m.mode = ModeInsert
-			m.chat.mode = ModeInsert
 			m.chat.FocusInput()
 			return m, nil
-		case "I":
+		case "/":
+			m.focusPrompt = true
 			m.mode = ModeInsert
-			m.chat.mode = ModeInsert
-			m.chat.SetInput("/act ")
+			m.chat.SetInput("/")
 			m.chat.FocusInput()
 			return m, nil
 		case ":":
 			m.mode = ModeCommand
 			m.command.Activate()
 			return m, nil
-		case "/":
-			m.mode = ModeInsert
-			m.chat.mode = ModeInsert
-			m.chat.SetInput("/")
-			m.chat.FocusInput()
-			return m, nil
-		case "ctrl+k":
-			m.openPalette()
-			return m, nil
-		case "P": // Shift+P — toggle Plan/Act
-			m.toggleAgentMode()
-			return m, nil
-		case "1":
-			m.activePane = PaneChat
-		case "2":
-			m.activePane = PaneDiff
-		case "3":
-			m.activePane = PaneContext
-		case "tab":
-			m.activePane = (m.activePane + 1) % 3
-		case "shift+tab":
-			m.activePane = (m.activePane + 2) % 3
 		case "q":
 			m.saveSession()
 			m.quitting = true
@@ -339,24 +367,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			m.chat.AddSystemMessage(helpText())
 			return m, nil
+		case "1":
+			m.showPanels = false
+			m.activePane = PaneChat
+			m.recalcSizes()
+		case "2":
+			m.showPanels = true
+			m.activePane = PaneDiff
+			m.recalcSizes()
+		case "3":
+			m.showPanels = true
+			m.activePane = PaneContext
+			m.recalcSizes()
 		case "j", "down", "k", "up", "g", "G", "pgup", "pgdown", "ctrl+d", "ctrl+u":
-			if m.activePane == PaneDiff {
-				nd, c := m.diff.Update(msg)
-				m.diff = nd.(DiffModel)
-				if c != nil {
-					cmds = append(cmds, c)
-				}
-			} else {
-				nc, c := m.chat.Update(msg)
-				m.chat = nc.(ChatModel)
-				if c != nil {
-					cmds = append(cmds, c)
-				}
+			nc, c := m.chat.Update(msg)
+			m.chat = nc.(ChatModel)
+			if c != nil {
+				cmds = append(cmds, c)
 			}
 		case "n", "p":
-			if m.activePane == PaneDiff {
-				nd, c := m.diff.Update(msg)
-				m.diff = nd.(DiffModel)
+			nd, c := m.diff.Update(msg)
+			m.diff = nd.(DiffModel)
+			if c != nil {
+				cmds = append(cmds, c)
+			}
+		default:
+			// Grok simple mode: printable keys auto-focus prompt and type
+			if msg.Type == tea.KeyRunes || (len(msg.String()) == 1 && msg.String() != "q") {
+				m.focusPrompt = true
+				m.mode = ModeInsert
+				m.chat.FocusInput()
+				nc, c := m.chat.Update(msg)
+				m.chat = nc.(ChatModel)
 				if c != nil {
 					cmds = append(cmds, c)
 				}
@@ -818,42 +860,54 @@ func (m *Model) budgetBlocks() bool {
 }
 
 func (m *Model) recalcSizes() {
-	mainH := m.height - 2
+	// Grok layout: footer(1) + hints(1) + prompt(~5) + toast + scrollback rest
+	footerH := 2
+	promptH := 6
+	if theme.CompactMode() {
+		promptH = 4
+		footerH = 1
+	}
 	if m.toast.Alive() {
-		mainH--
+		footerH++
 	}
-	if mainH < 8 {
-		mainH = 8
+	mainH := m.height - footerH - promptH
+	if mainH < 6 {
+		mainH = 6
 	}
-	if m.compact {
-		// full width for active pane
-		w := m.width - 4
-		m.chat.SetSize(w, mainH)
-		m.diff.SetSize(w, mainH)
-		m.context.SetSize(w, mainH)
-	} else {
-		chatW := m.width * 50 / 100
-		diffW := m.width * 30 / 100
-		ctxW := m.width - chatW - diffW - 6
-		if chatW < 20 {
-			chatW = 20
-		}
-		if diffW < 12 {
-			diffW = 12
-		}
-		if ctxW < 10 {
-			ctxW = 10
+	if m.showPanels && m.width >= 100 {
+		chatW := m.width * 58 / 100
+		sideW := (m.width - chatW - 4) / 2
+		if sideW < 14 {
+			sideW = 14
 		}
 		m.chat.SetSize(chatW, mainH)
-		m.diff.SetSize(diffW, mainH)
-		m.context.SetSize(ctxW, mainH)
+		m.diff.SetSize(sideW, mainH)
+		m.context.SetSize(sideW, mainH)
+	} else {
+		// Full-width scrollback (Grok default)
+		m.chat.SetSize(m.width, mainH)
+		m.diff.SetSize(m.width, mainH)
+		m.context.SetSize(m.width, mainH)
 	}
 	m.status.SetSize(m.width)
 	m.command.SetSize(m.width, mainH)
+	m.palette.SetSize(m.width, m.height)
+	m.picker.Width = min(50, m.width-4)
 }
 
 func (m *Model) syncStatus() {
-	m.status.Mode = modeString(m.mode)
+	// Grok focus labels
+	if m.focusPrompt || m.mode == ModeInsert {
+		m.status.Mode = "PROMPT"
+	} else {
+		m.status.Mode = "SCROLL"
+	}
+	if m.mode == ModePalette {
+		m.status.Mode = "PALETTE"
+	}
+	if m.mode == ModeReview {
+		m.status.Mode = "REVIEW"
+	}
 	m.status.Provider = m.providerReg.CurrentName()
 	if cur, err := m.providerReg.Current(); err == nil {
 		m.status.ModelName = cur.Model()
@@ -861,6 +915,7 @@ func (m *Model) syncStatus() {
 	m.status.Tokens = m.totalTokens
 	m.status.Cost = m.totalCost
 	m.status.Streaming = m.chat.streaming
+	m.status.ThemeName = theme.Name()
 	if m.cfg != nil {
 		m.status.BudgetMax = m.cfg.Budget.MaxCostUSD
 		if m.cfg.Budget.MaxCostUSD > 0 {
@@ -883,7 +938,12 @@ func (m *Model) syncStatus() {
 		}
 	}
 	m.status.Workdir = m.workdir
-	m.chat.mode = m.mode
+	// Keep chat mode aligned with focus
+	if m.focusPrompt {
+		m.chat.mode = ModeInsert
+	} else {
+		m.chat.mode = ModeNormal
+	}
 }
 
 func (m *Model) saveSession() {
@@ -913,60 +973,56 @@ func (m *Model) persistSessionCmd() tea.Cmd {
 
 func (m Model) View() string {
 	if m.quitting {
-		return "Goodbye! — CodeForge TUI by NanoMind\n"
+		return lipgloss.NewStyle().Foreground(theme.Current().AccentUser).Render(
+			"Goodbye — CodeForge · Grok-style TUI\n")
 	}
 	if m.width == 0 {
-		return "Menginisialisasi...\n"
+		return "Starting CodeForge…\n"
 	}
 
-	topBar := m.status.ViewTop()
-	bottomBar := m.status.ViewBottom()
-
-	var mainRow string
-	if m.compact {
-		// single pane
-		var body string
-		switch m.activePane {
-		case PaneDiff:
-			body = theme.PaneBorder(true, m.width-2, m.height-4).Render(m.diff.View())
-		case PaneContext:
-			body = theme.PaneBorder(true, m.width-2, m.height-4).Render(m.context.View())
-		default:
-			body = theme.PaneBorder(true, m.width-2, m.height-4).Render(m.chat.View())
-		}
-		tabHint := lipgloss.NewStyle().Foreground(theme.Current().TextMuted).Render(
-			fmt.Sprintf("  [1]Chat [2]Diff [3]Files  ·  focus: %s", paneName(m.activePane)))
-		mainRow = lipgloss.JoinVertical(lipgloss.Left, tabHint, body)
-	} else {
-		chatStyle := theme.PaneBorder(m.activePane == PaneChat, 0, 0)
-		diffStyle := theme.PaneBorder(m.activePane == PaneDiff, 0, 0)
-		ctxStyle := theme.PaneBorder(m.activePane == PaneContext, 0, 0)
-		// re-apply size via width on join
-		mainRow = lipgloss.JoinHorizontal(lipgloss.Top,
-			chatStyle.Render(m.chat.View()),
-			diffStyle.Render(m.diff.View()),
-			ctxStyle.Render(m.context.View()),
+	// ── Review fullscreen ────────────────────────────
+	if m.mode == ModeReview {
+		return lipgloss.JoinVertical(lipgloss.Left,
+			m.review.View(),
+			m.status.ViewFooter(),
 		)
 	}
 
-	parts := []string{topBar}
+	// ── Main: Grok scrollback (optional side drawers) ─
+	scroll := m.chat.ViewScrollback()
+	var main string
+	if m.showPanels && m.width >= 100 {
+		main = lipgloss.JoinHorizontal(lipgloss.Top,
+			scroll,
+			theme.PaneBorder(m.activePane == PaneDiff, 0, 0).Render(m.diff.View()),
+			theme.PaneBorder(m.activePane == PaneContext, 0, 0).Render(m.context.View()),
+		)
+	} else {
+		main = scroll
+	}
+
+	parts := []string{}
 	if m.toast.Alive() {
 		parts = append(parts, m.toast.View(m.width))
 	}
-	parts = append(parts, mainRow)
+	parts = append(parts, main)
 
+	// Overlays above prompt
 	switch m.mode {
 	case ModeCommand:
 		parts = append(parts, m.command.View())
 	case ModePalette:
-		// overlay palette centered-ish
 		parts = append(parts, m.palette.View())
 	case ModeFilePick:
 		parts = append(parts, m.picker.View())
-	case ModeReview:
-		return lipgloss.JoinVertical(lipgloss.Left, topBar, m.review.View(), bottomBar)
 	}
-	parts = append(parts, bottomBar)
+
+	// Composer + Grok footer
+	parts = append(parts, m.chat.ViewPrompt(m.focusPrompt))
+	parts = append(parts, m.status.ViewFooter())
+	if !theme.CompactMode() {
+		parts = append(parts, m.status.ViewBottom())
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
@@ -1252,6 +1308,32 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 			"Session cost: $%.4f\nBudget max: $%.2f (0=unlimited)\nWarn at: $%.2f\nTokens: %d\n\nSet in config:\n  budget:\n    max_cost_usd: 1.0\n    warn_at_usd: 0.5",
 			m.totalCost, m.cfg.Budget.MaxCostUSD, m.cfg.Budget.WarnAtUSD, m.totalTokens,
 		))
+		return nil
+
+	case "theme", "t":
+		if argStr == "" {
+			name := theme.Cycle()
+			m.chat.AddSystemMessage("Theme → " + name + "  (or /theme groknight|aurora|tokyonight|grokday)")
+			m.toast = components.NewToast("Theme: "+name, "info", 2*time.Second)
+			return nil
+		}
+		if theme.SetByName(argStr) {
+			m.chat.AddSystemMessage("Theme → " + theme.Name())
+			m.toast = components.NewToast("Theme: "+theme.Name(), "success", 2*time.Second)
+		} else {
+			m.chat.AddSystemMessage("Unknown theme. Use: " + strings.Join(theme.ThemeNames(), ", "))
+		}
+		return nil
+
+	case "compact-mode", "compact":
+		on := theme.ToggleCompact()
+		m.recalcSizes()
+		state := "off"
+		if on {
+			state = "on"
+		}
+		m.chat.AddSystemMessage("Compact mode " + state)
+		m.toast = components.NewToast("Compact "+state, "info", 2*time.Second)
 		return nil
 
 	case "read", "r":
@@ -1857,6 +1939,7 @@ var slashCommands = []string{
 	"/act", "/read", "/ls", "/grep", "/run", "/explain", "/fix",
 	"/status", "/commit", "/push", "/pull", "/pr", "/issue", "/gh",
 	"/provider", "/model", "/mode", "/cost", "/budget", "/rules", "/index",
+	"/theme", "/compact-mode",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
 
@@ -1870,33 +1953,43 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge TUI v0.6.0  ·  NanoMind 2026  ·  Tier-2 Intelligence
+	return `CodeForge · Grok 4.5–style TUI  ·  v0.8.0
 
-` + keymap.FullHelp() + `
+LAYOUT (like Grok Build)
+  Scrollback  full-width conversation blocks with accent bars
+  Prompt      bottom composer (❯) — focused by default
+  Footer      mode · model · git/gh · cost · theme
 
-PROJECT INTELLIGENCE
-  /rules     Show AGENTS.md / project rules
-  /index     Codebase index stats (codebase_search tool)
-  /budget    Session cost vs budget.max_cost_usd
+FOCUS
+  Tab           Swap prompt ↔ scrollback
+  Esc           Scrollback (or 2× Esc clear prompt)
+  Space / i     Focus prompt
+  Type letter   Auto-focus prompt (simple mode)
+  Ctrl+B        Toggle Diff/Files side panels
 
-GITHUB & SHIP
-  /gh · /pr · /issue · /pr babysit [--fix]
+MODES
+  Shift+Tab     Cycle Plan ↔ Act write mode
+  /theme        Cycle themes (groknight default)
+  /compact-mode Tighter padding
 
-AGENT TOOLS
-  research · codebase_search · diagnostics · fetch_url
-  search_replace · apply_patch · github · mcp_*`
+INPUT
+  @             File picker
+  /             Slash commands (+ autocomplete strip)
+  Ctrl+K        Command palette
+  Enter         Send
+
+` + keymap.FullHelp()
 }
 
 func aboutText() string {
-	return `CodeForge TUI v0.6.0
+	return `CodeForge TUI v0.8.0
 Created by NanoMind — 2026 — Apache 2.0
 
-Tier-2: AGENTS.md rules · codebase index · diagnostics · fetch_url
-        research sub-agent · MCP servers · cost budget · secret redaction
-Stack: Go · Bubble Tea · Glamour · multi-provider · gh
-Design: Terminal Glass / Aurora Dark
+UX: Grok 4.5–inspired scrollback + prompt · GrokNight theme
+Features: agent · Plan/Act · GitHub · plugins · headless CI · rules · index
+Stack: Go · Bubble Tea · Glamour · multi-provider
 
-"Terminal AI coding companion — open, modular, vendor-neutral — and it feels like the future."
+"Terminal AI coding companion — open, modular, vendor-neutral."
                         — NanoMind, 2026`
 }
 

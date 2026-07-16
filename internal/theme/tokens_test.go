@@ -2,9 +2,9 @@ package theme
 
 import "testing"
 
-func TestAuroraHasRequiredFields(t *testing.T) {
-	tok := Aurora()
-	if tok.BgBase == "" || tok.AccentAI == "" {
+func TestGrokNightHasRequiredFields(t *testing.T) {
+	tok := GrokNight()
+	if tok.BgBase == "" || tok.AccentUser == "" || tok.AccentAssistant == "" {
 		t.Fatal("missing tokens")
 	}
 }
@@ -15,7 +15,18 @@ func TestSetAndCurrent(t *testing.T) {
 	if c.BgBase != Light().BgBase {
 		t.Fatal("Set/Current mismatch")
 	}
-	Set(Aurora())
+	Set(GrokNight())
+}
+
+func TestSetByNameAndCycle(t *testing.T) {
+	if !SetByName("tokyonight") {
+		t.Fatal("tokyonight")
+	}
+	if Name() != "tokyonight" {
+		t.Fatal(Name())
+	}
+	_ = Cycle()
+	SetByName("groknight")
 }
 
 func TestMotionFlag(t *testing.T) {

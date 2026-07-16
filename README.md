@@ -12,7 +12,7 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v0.7.0` |
+| **Version** | `v0.8.0` |
 
 CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
@@ -122,7 +122,7 @@ codeforge --no-motion
 
 ```bash
 codeforge version
-# → codeforge 0.7.0
+# → codeforge 0.8.0
 ```
 
 ---

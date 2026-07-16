@@ -98,10 +98,10 @@ func NewChatModel(provReg *provider.Registry, toolReg *tool.Registry, repo *git.
 		ta:          ta,
 		attachments: make(map[string]string),
 	}
-	c.addLine(lineSystem, "CodeForge TUI v0.3.0  ·  NanoMind 2026  ·  Apache 2.0  ·  Neo-Forge")
+	c.addLine(lineSystem, "CodeForge · Grok-style TUI  ·  type to chat  ·  / for commands  ·  ? help")
 	c.addLine(lineDivider, "")
-	c.addLine(lineSystem, "i: chat  ·  /act <task>: agent  ·  Ctrl+K: palette  ·  @: file  ·  Shift+P: Plan/Act")
-	c.addLine(lineSystem, "Default mode: PLAN (write_file menunggu review). Ketik ? untuk help.")
+	c.addLine(lineSystem, "Tab focus · @ file · Ctrl+K palette · Shift+Tab Plan/Act · Ctrl+B panels")
+	c.addLine(lineSystem, "Default write mode: PLAN (edits staged for review). Theme: GrokNight.")
 	c.addLine(lineDivider, "")
 	return c
 }
@@ -557,63 +557,76 @@ func (c *ChatModel) refreshViewport() {
 
 func (c *ChatModel) renderLines() string {
 	t := theme.Current()
-	innerW := c.width - 6
+	// Grok-style: content width with left accent + padding
+	hPad := 2
+	if theme.CompactMode() {
+		hPad = 1
+	}
+	innerW := c.width - 4 - hPad
 	if innerW < 10 {
 		innerW = 10
 	}
 
-	// Group consecutive assistant lines into markdown blocks
+	bar := func(color lipgloss.Color) string {
+		return theme.BlockPrefix(color)
+	}
+
 	var rendered []string
 	var mdBuf strings.Builder
 	flushMD := func() {
 		if mdBuf.Len() == 0 {
 			return
 		}
-		out := markdown.Render(mdBuf.String(), innerW)
+		out := markdown.Render(mdBuf.String(), innerW-2)
+		pfx := bar(t.AccentAssistant)
 		for _, ln := range strings.Split(out, "\n") {
-			rendered = append(rendered, ln)
+			rendered = append(rendered, pfx+ln)
 		}
 		mdBuf.Reset()
+		rendered = append(rendered, "")
 	}
 
 	for _, l := range c.lines {
 		switch l.kind {
 		case lineDivider:
 			flushMD()
-			rendered = append(rendered, "")
 		case lineUser:
 			flushMD()
-			prefix := "▶ "
-			wrapped := wordwrap.String(l.text, innerW-len(prefix))
-			for i, wl := range strings.Split(wrapped, "\n") {
-				if i == 0 {
-					rendered = append(rendered, theme.StyleUser().Render(prefix+wl))
-				} else {
-					rendered = append(rendered, theme.StyleUser().Render("  "+wl))
-				}
+			// Grok user block: magenta accent + light bg band
+			pfx := bar(t.AccentUser)
+			label := lipgloss.NewStyle().Foreground(t.AccentUser).Bold(true).Render("you")
+			rendered = append(rendered, pfx+label)
+			wrapped := wordwrap.String(l.text, innerW-2)
+			bg := lipgloss.NewStyle().Foreground(t.TextPrimary).Background(t.BgLight)
+			for _, wl := range strings.Split(wrapped, "\n") {
+				rendered = append(rendered, pfx+bg.Width(innerW-2).Render(wl))
 			}
+			rendered = append(rendered, "")
 		case lineAssistant:
 			mdBuf.WriteString(l.text)
 			mdBuf.WriteByte('\n')
 		case lineSystem:
 			flushMD()
+			pfx := bar(t.AccentSystem)
 			wrapped := wordwrap.String(l.text, innerW-2)
 			for _, wl := range strings.Split(wrapped, "\n") {
-				rendered = append(rendered, theme.StyleTextMuted().Render("  "+wl))
+				rendered = append(rendered, pfx+theme.StyleTextMuted().Render(wl))
 			}
 		case lineToolCall:
 			flushMD()
-			// vertical timeline connector
-			rendered = append(rendered,
-				lipgloss.NewStyle().Foreground(t.AccentAgent).Render("  │ "+l.text))
+			// Grok tool block: diamond bullet + tool accent
+			pfx := bar(t.AccentTool)
+			body := lipgloss.NewStyle().Foreground(t.AccentTool).Render(l.text)
+			rendered = append(rendered, pfx+body)
 		case lineToolResult:
 			flushMD()
 			color := t.Success
 			if strings.HasPrefix(l.text, "✗") {
 				color = t.Danger
 			}
-			rendered = append(rendered,
-				lipgloss.NewStyle().Foreground(color).Render("  └ "+l.text))
+			pfx := bar(t.AccentTool)
+			body := lipgloss.NewStyle().Foreground(color).Faint(true).Render("  "+l.text)
+			rendered = append(rendered, pfx+body)
 		}
 	}
 	flushMD()
@@ -628,58 +641,86 @@ var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 
 type SpinnerTickMsg struct{}
 
-func (c ChatModel) View() string {
+// ViewScrollback is the Grok-style conversation pane (no composer).
+func (c ChatModel) ViewScrollback() string {
 	w := c.width
 	if w < 10 {
 		w = 10
 	}
 	t := theme.Current()
-	innerW := w - 4
-	if innerW < 4 {
-		innerW = 4
-	}
-
 	var sb strings.Builder
-	header := "Chat"
+	// Subtle top status when streaming
 	if c.streaming {
 		sp := spinnerFrames[c.spinnerFrame%len(spinnerFrames)]
-		if c.agentFull != "" {
-			header = sp + " Agent"
-		} else {
-			header = sp + " Streaming"
+		label := "thinking"
+		if c.agentFull != "" || (len(c.lines) > 0 && c.lines[len(c.lines)-1].kind == lineToolCall) {
+			label = "working"
 		}
+		sb.WriteString(lipgloss.NewStyle().Foreground(t.AccentRunning).Render(sp+" "+label) + "\n")
 	}
-	sb.WriteString(theme.StyleHeader().Render(header) + "\n")
-	sb.WriteString(lipgloss.NewStyle().Foreground(t.BorderDim).Render(strings.Repeat("─", innerW)) + "\n")
-
 	if c.ready {
-		sb.WriteString(c.vp.View() + "\n")
+		sb.WriteString(c.vp.View())
 	}
-
-	sb.WriteString(lipgloss.NewStyle().Foreground(t.BorderDim).Render(strings.Repeat("─", innerW)) + "\n")
-
-	switch {
-	case c.streaming:
-		sp := spinnerFrames[c.spinnerFrame%len(spinnerFrames)]
-		sb.WriteString(lipgloss.NewStyle().Foreground(t.TextMuted).Render(sp + " menunggu AI...") + "\n")
-	case c.mode == ModeInsert:
-		// style textarea
-		c.ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(t.AccentAI).Bold(true)
-		c.ta.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(t.TextMuted)
-		sb.WriteString(c.ta.View() + "\n")
-		if len(c.attachments) > 0 {
-			var names []string
-			for n := range c.attachments {
-				names = append(names, "@"+n)
-			}
-			sb.WriteString(lipgloss.NewStyle().Foreground(t.AccentUser).Render("  📎 "+strings.Join(names, " ")) + "\n")
-		}
-	default:
-		hint := "(i) chat  (/) command  (Ctrl+K) palette  (?) help"
-		sb.WriteString(lipgloss.NewStyle().Foreground(t.TextDisabled).Render(hint) + "\n")
-	}
-
 	return lipgloss.NewStyle().Width(w).Height(c.height).Render(sb.String())
+}
+
+// ViewPrompt is the Grok-style bottom composer.
+func (c ChatModel) ViewPrompt(focused bool) string {
+	w := c.width
+	if w < 10 {
+		w = 10
+	}
+	t := theme.Current()
+	// Grok prompt prefix
+	c.ta.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(t.AccentUser).Bold(true)
+	c.ta.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(t.TextMuted)
+	c.ta.Prompt = "❯ "
+	if !focused {
+		c.ta.Blur()
+	}
+
+	var body strings.Builder
+	if c.streaming && focused {
+		sp := spinnerFrames[c.spinnerFrame%len(spinnerFrames)]
+		body.WriteString(lipgloss.NewStyle().Foreground(t.TextMuted).Render(sp+" agent running — type to queue · Esc scrollback") + "\n")
+	}
+	body.WriteString(c.ta.View())
+	if len(c.attachments) > 0 {
+		var names []string
+		for n := range c.attachments {
+			names = append(names, "@"+n)
+		}
+		body.WriteString("\n" + lipgloss.NewStyle().Foreground(t.AccentUser).Render("📎 "+strings.Join(names, " ")))
+	}
+	// Slash hint when typing /
+	if strings.HasPrefix(strings.TrimSpace(c.ta.Value()), "/") {
+		body.WriteString("\n" + c.slashHints())
+	}
+
+	return theme.PromptFrame(w, focused).Render(body.String())
+}
+
+func (c ChatModel) slashHints() string {
+	t := theme.Current()
+	inp := strings.TrimSpace(c.ta.Value())
+	var matches []string
+	for _, cmd := range slashCommands {
+		if strings.HasPrefix(cmd, inp) {
+			matches = append(matches, cmd)
+		}
+		if len(matches) >= 6 {
+			break
+		}
+	}
+	if len(matches) == 0 {
+		return lipgloss.NewStyle().Foreground(t.TextMuted).Render("  no matching commands")
+	}
+	return lipgloss.NewStyle().Foreground(t.AccentTool).Render("  " + strings.Join(matches, "  "))
+}
+
+// View keeps backward compatibility for pane layouts.
+func (c ChatModel) View() string {
+	return c.ViewScrollback()
 }
 
 func truncate(s string, n int) string {

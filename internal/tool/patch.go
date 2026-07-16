@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/codeforge/tui/internal/diff"
+	"github.com/codeforge/tui/internal/sandbox"
 	"github.com/codeforge/tui/internal/workspace"
 )
 
@@ -71,6 +72,9 @@ func (s *SearchReplace) Execute(input json.RawMessage) Result {
 	}
 	path, err := resolvePathWS(s.WorkDir, in.Path)
 	if err != nil {
+		return Result{Error: err.Error()}
+	}
+	if err := sandbox.Global().CheckWrite(path); err != nil {
 		return Result{Error: err.Error()}
 	}
 	oldContent, err := os.ReadFile(path)

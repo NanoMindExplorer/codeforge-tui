@@ -51,6 +51,20 @@ Phased plan to match **Grok Build / Grok 4.5** agent capabilities inside CodeFor
 - Permission read-only list includes Grok tools + glob aliases
 - Agent system prompt lists Grok tool names
 
+## Phase G4 — OS sandbox ✅
+
+Grok-compatible profiles: `off` · `workspace` · `read-only` · `strict` · `devbox`
+
+| Item | Detail |
+|------|--------|
+| CLI | `--sandbox <profile>` (TUI + agent) |
+| Env | `CODEFORGE_SANDBOX` / `GROK_SANDBOX` |
+| Config | `sandbox.profile` + `sandbox.deny` |
+| Slash | `/sandbox` |
+| Shell | bubblewrap when available, else soft path + optional `unshare -n` |
+| Tools | soft `CheckWrite` / `CheckRead` on file tools |
+| Docs | [SANDBOX.md](./SANDBOX.md) |
+
 ### Quick start
 
 ```bash

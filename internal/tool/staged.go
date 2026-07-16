@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/codeforge/tui/internal/diff"
+	"github.com/codeforge/tui/internal/sandbox"
 )
 
 // WriteMode controls whether writes stage (Plan/BUILD), apply immediately
@@ -239,6 +240,9 @@ func (s *StagedWriter) Execute(input json.RawMessage) Result {
 	}
 	path, err := resolvePathWS(s.inner.WorkDir, in.Path)
 	if err != nil {
+		return Result{Error: err.Error()}
+	}
+	if err := sandbox.Global().CheckWrite(path); err != nil {
 		return Result{Error: err.Error()}
 	}
 

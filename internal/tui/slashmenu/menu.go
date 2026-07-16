@@ -48,6 +48,7 @@ func DefaultItems() []Item {
 		{"/plan", "Enter DESIGN plan mode"},
 		{"/view-plan", "Review design plan"},
 		{"/permissions", "Permission mode & rules"},
+		{"/sandbox", "OS sandbox profile (Grok-compatible)"},
 		{"/hooks", "List loaded hooks"},
 		{"/todos", "Task list (footer badge)"},
 		{"/tasks", "Background shell jobs"},

@@ -24,6 +24,7 @@ import (
 	"github.com/codeforge/tui/internal/permission"
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/rules"
+	"github.com/codeforge/tui/internal/sandbox"
 	"github.com/codeforge/tui/internal/session"
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/codeforge/tui/internal/todos"
@@ -978,7 +979,7 @@ func isImmediateSlash(cmd string) bool {
 		"/status", "/clear", "/quit", "/theme", "/compact-mode", "/vim-mode",
 		"/sessions", "/resume", "/new", "/fork", "/rewind", "/compact",
 		"/context", "/session-info", "/mode", "/plan", "/view-plan",
-		"/permissions", "/hooks", "/todos", "/tasks", "/settings", "/copy",
+		"/permissions", "/sandbox", "/hooks", "/todos", "/tasks", "/settings", "/copy",
 		"/memory", "/undo", "/push", "/pull":
 		return true
 	default:
@@ -1229,6 +1230,7 @@ func (m *Model) openSettings() {
 		{Key: "compact_mode", Value: compact, Hint: "toggle"},
 		{Key: "session_mode", Value: m.sessionMode.Label(), Hint: "cycle"},
 		{Key: "permission_mode", Value: permMode, Hint: "cycle"},
+		{Key: "sandbox", Value: string(sandbox.Global().Profile), Hint: "/sandbox"},
 		{Key: "provider", Value: m.providerReg.CurrentName(), Hint: modelName},
 		{Key: "todos", Value: todos.Global.Badge(), Hint: "/todos"},
 		{Key: "bg_tasks", Value: fmt.Sprintf("%d running", bgtask.Global.RunningCount()), Hint: "/tasks"},
@@ -1730,6 +1732,7 @@ func (m *Model) syncStatus() {
 	m.status.AgentMode = m.sessionMode.Label()
 	m.status.TodoBadge = todos.Global.Badge()
 	m.status.BgTasks = bgtask.Global.RunningCount()
+	m.status.Sandbox = sandbox.Global().Label()
 	if m.gitRepo != nil {
 		if branch, err := m.gitRepo.Branch(); err == nil {
 			m.status.Branch = branch
@@ -2349,6 +2352,32 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 			return nil
 		}
 		m.chat.AddSystemMessage(m.hooks.Summary())
+
+	case "sandbox", "sbx":
+		eng := sandbox.Global()
+		if len(args) == 0 {
+			bwrap := "no"
+			if sandbox.HasBubblewrap() {
+				bwrap = "yes"
+			}
+			m.chat.AddSystemMessage(fmt.Sprintf(
+				"%s\nbubblewrap: %s\n\n  /sandbox off         — unrestricted\n  /sandbox workspace   — write CWD + ~/.codeforge + tmp (recommended)\n  /sandbox read-only   — no project writes; net blocked for shell\n  /sandbox strict      — read CWD+system only; net blocked\n  /sandbox devbox      — write almost everywhere except /data\n\nEnv: CODEFORGE_SANDBOX · flag: --sandbox · docs/SANDBOX.md",
+				eng.Summary(), bwrap,
+			))
+			return nil
+		}
+		p, ok := sandbox.ParseProfile(args[0])
+		if !ok {
+			m.chat.AddSystemMessage("Unknown profile. Use: off | workspace | read-only | strict | devbox")
+			return nil
+		}
+		// Preserve deny list from previous engine
+		deny := append([]string(nil), eng.Deny...)
+		ne := sandbox.Ensure(p, m.workdir)
+		ne.Deny = deny
+		sandbox.LogEvent("switch", map[string]any{"profile": string(p), "backend": string(ne.Backend)})
+		m.chat.AddSystemMessage("✓ " + ne.Summary())
+		m.toast = components.NewToast(ne.Summary(), "info", 3*time.Second)
 
 	case "todos", "todo":
 		if len(args) == 0 {
@@ -3443,7 +3472,7 @@ var slashCommands = []string{
 	"/provider", "/model", "/mode", "/cost", "/budget", "/rules", "/index",
 	"/theme", "/compact-mode", "/vim-mode",
 	"/resume", "/new", "/fork", "/rewind", "/compact", "/context", "/session-info",
-	"/mode", "/plan", "/view-plan", "/permissions", "/hooks",
+	"/mode", "/plan", "/view-plan", "/permissions", "/sandbox", "/hooks",
 	"/todos", "/tasks", "/memory", "/settings", "/copy",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
@@ -3458,7 +3487,7 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge · Grok 4.5 parity  ·  Phases 1–9 + G1–G2
+	return `CodeForge · Grok 4.5 parity  ·  Phases 1–9 + G1–G4
 
 SCROLLBACK
   Enter · y/Y · j/k · fold · G follow-tail
@@ -3469,25 +3498,27 @@ MODES
 PRODUCT
   /resume /new /fork /rewind /compact /context
   /plan /view-plan /todos /tasks /memory /settings /copy
-  /theme /permissions /hooks /vim-mode /compact-mode
+  /theme /permissions /sandbox /hooks /vim-mode /compact-mode
 
 AGENT / IDE
   codeforge agent … | agent stdio | agent serve
   Grok tools: web_search, glob, memory_*, spawn_subagent, ask_user_question
-  See docs/ACP.md · docs/GROK_TOOLS_AND_MODEL.md
+  Sandbox: --sandbox workspace|read-only|strict  ·  /sandbox
+  See docs/ACP.md · docs/SANDBOX.md · docs/GROK_TOOLS_AND_MODEL.md
 `
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.1.1
+	return `CodeForge TUI v1.2.0
 Created by NanoMind — 2026 — Apache 2.0
 
-Grok Build TUI–compatible (Phases 1–9 + G1–G2):
+Grok Build TUI–compatible (Phases 1–9 + G1–G4):
   blocks · input · themes · sessions · design plan
   permissions/hooks · todos/tasks · ACP IDE bridge
   Grok 4.5 model · full Grok tool surface + /memory
-Honest gaps: OS sandbox, full Grok extension methods.
-See docs/GROK_PARITY_ROADMAP.md · docs/GROK_TOOLS_AND_MODEL.md
+  OS sandbox profiles (workspace/read-only/strict) + soft/bwrap
+Honest gaps: full Landlock/Seatbelt process-wide, full x.ai/* ACP.
+See docs/GROK_PARITY_ROADMAP.md · docs/SANDBOX.md
 `
 }
 

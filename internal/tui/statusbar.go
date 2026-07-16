@@ -33,6 +33,8 @@ type StatusBarModel struct {
 	// Phase 7
 	TodoBadge  string // e.g. "2/5"
 	BgTasks    int    // running background tasks
+	// Phase G4
+	Sandbox string // e.g. "SBX:ws" or empty
 }
 
 func NewStatusBarModel() StatusBarModel {
@@ -109,9 +111,13 @@ func (s StatusBarModel) ViewFooter() string {
 	if s.BgTasks > 0 {
 		bg = lipgloss.NewStyle().Foreground(t.Warning).Render(fmt.Sprintf("⟳%d", s.BgTasks)) + "  "
 	}
+	sbx := ""
+	if s.Sandbox != "" {
+		sbx = lipgloss.NewStyle().Foreground(t.Warning).Render(s.Sandbox) + "  "
+	}
 
 	left := lipgloss.JoinHorizontal(lipgloss.Left, mode, " ", agent, "  ", model, "  ", git)
-	right := lipgloss.JoinHorizontal(lipgloss.Right, todo, bg, spark, "  ", cost, "  ", themeN, "  ", clock)
+	right := lipgloss.JoinHorizontal(lipgloss.Right, todo, bg, sbx, spark, "  ", cost, "  ", themeN, "  ", clock)
 
 	pad := s.width - lipgloss.Width(left) - lipgloss.Width(right) - 2
 	if pad < 1 {

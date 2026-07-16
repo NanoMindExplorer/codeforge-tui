@@ -32,6 +32,9 @@ type Options struct {
 	WorkDir        string
 	Quiet          bool
 	SystemExtra    string
+	// Sandbox profile (Grok-compatible); empty uses config/env.
+	Sandbox        string
+	SandboxFlagSet bool
 }
 
 // Result is the structured outcome of a headless run.
@@ -75,11 +78,13 @@ func Run(opt Options, w io.Writer) (Result, error) {
 	}
 
 	rt, err := app.Bootstrap(app.Options{
-		WorkDir:   opt.WorkDir,
-		Quiet:     opt.Quiet || opt.JSON,
-		ActMode:   opt.Act || !opt.Plan,
-		PlanMode:  opt.Plan,
-		SkipIndex: false,
+		WorkDir:        opt.WorkDir,
+		Quiet:          opt.Quiet || opt.JSON,
+		ActMode:        opt.Act || !opt.Plan,
+		PlanMode:       opt.Plan,
+		SkipIndex:      false,
+		Sandbox:        opt.Sandbox,
+		SandboxFlagSet: opt.SandboxFlagSet,
 	})
 	if err != nil {
 		return Result{OK: false, Error: err.Error()}, err

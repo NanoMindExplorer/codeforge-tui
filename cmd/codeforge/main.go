@@ -26,7 +26,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "1.1.1"
+	ProjectVersion = "1.2.0"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -59,21 +59,32 @@ func runTUI(args []string) {
 	skipWizard := false
 	minimal := false
 	compact := false
+	sandboxFlag := ""
+	sandboxSet := false
 	var pathArgs []string
-	for _, a := range args {
-		switch a {
-		case "--no-motion":
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--no-motion":
 			noMotion = true
-		case "--minimal":
+		case a == "--minimal":
 			minimal = true
-		case "--compact":
+		case a == "--compact":
 			compact = true
-		case "--skip-wizard", "--yes", "-y":
+		case a == "--skip-wizard", a == "--yes", a == "-y":
 			skipWizard = true
-		case "--help", "-h":
+		case a == "--sandbox" || strings.HasPrefix(a, "--sandbox="):
+			sandboxSet = true
+			if strings.HasPrefix(a, "--sandbox=") {
+				sandboxFlag = strings.TrimPrefix(a, "--sandbox=")
+			} else if i+1 < len(args) {
+				i++
+				sandboxFlag = args[i]
+			}
+		case a == "--help" || a == "-h":
 			printUsage()
 			return
-		case "--version", "-v":
+		case a == "--version" || a == "-v":
 			fmt.Printf("codeforge %s\n", ProjectVersion)
 			return
 		default:
@@ -120,7 +131,11 @@ func runTUI(args []string) {
 		runWizard()
 	}
 
-	rt, err := app.Bootstrap(app.Options{WorkDir: workdir})
+	rt, err := app.Bootstrap(app.Options{
+		WorkDir:        workdir,
+		Sandbox:        sandboxFlag,
+		SandboxFlagSet: sandboxSet,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -173,67 +188,75 @@ func runAgentCLI(args []string) int {
 
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		switch a {
-		case "stdio":
+		switch {
+		case a == "stdio":
 			mode = "stdio"
-		case "serve":
+		case a == "serve":
 			mode = "serve"
-		case "--json", "-j":
+		case a == "--json" || a == "-j":
 			opt.JSON = true
 			opt.Quiet = true
-		case "--plan":
+		case a == "--plan":
 			opt.Plan = true
 			opt.Act = false
 			acpOpt.Plan = true
-		case "--act":
+		case a == "--act":
 			opt.Act = true
 			opt.Plan = false
-		case "--always-approve", "--yolo":
+		case a == "--always-approve" || a == "--yolo":
 			opt.AlwaysApprove = true
 			opt.Act = true
 			opt.Plan = false
 			acpOpt.AlwaysApprove = true
-		case "--dont-ask":
+		case a == "--dont-ask":
 			opt.DontAsk = true
 			acpOpt.DontAsk = true
-		case "--model", "-m":
+		case a == "--sandbox" || strings.HasPrefix(a, "--sandbox="):
+			opt.SandboxFlagSet = true
+			if strings.HasPrefix(a, "--sandbox=") {
+				opt.Sandbox = strings.TrimPrefix(a, "--sandbox=")
+			} else if i+1 < len(args) {
+				i++
+				opt.Sandbox = args[i]
+			}
+		case a == "--model" || a == "-m":
 			if i+1 < len(args) {
 				i++
 				opt.Model = args[i]
 				acpOpt.Model = args[i]
 			}
-		case "--quiet", "-q":
+		case a == "--quiet" || a == "-q":
 			opt.Quiet = true
-		case "--workdir", "-C":
+		case a == "--workdir" || a == "-C":
 			if i+1 < len(args) {
 				i++
 				opt.WorkDir = args[i]
 				acpOpt.WorkDir = args[i]
 			}
-		case "--timeout":
+		case a == "--timeout":
 			if i+1 < len(args) {
 				i++
 				if sec, err := strconv.Atoi(args[i]); err == nil {
 					opt.Timeout = time.Duration(sec) * time.Second
 				}
 			}
-		case "--max-iter":
+		case a == "--max-iter":
 			if i+1 < len(args) {
 				i++
 				opt.MaxIter, _ = strconv.Atoi(args[i])
 				acpOpt.MaxIter = opt.MaxIter
 			}
-		case "--bind":
+		case a == "--bind":
 			if i+1 < len(args) {
 				i++
 				bind = args[i]
 			}
-		case "--secret":
+		case a == "--secret":
 			if i+1 < len(args) {
 				i++
 				secret = args[i]
 			}
-		case "--help", "-h":
+		case a == "--help" || a == "-h":
 			fmt.Print(agentUsage())
 			return 0
 		default:
@@ -440,6 +463,7 @@ TUI flags:
   --minimal         No chrome; terminal-native 16 colors
   --compact         Tighter padding (same as /compact-mode)
   --skip-wizard     Skip first-run setup
+  --sandbox MODE    OS sandbox: off|workspace|read-only|strict|devbox
   -h, --help        Help
   -v, --version     Version
 
@@ -450,6 +474,7 @@ Env:
   GEMINI_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY
   GITHUB_TOKEN / GH_TOKEN
   BRAVE_API_KEY                optional richer web_search
+  CODEFORGE_SANDBOX / GROK_SANDBOX   sandbox profile (see docs/SANDBOX.md)
   CODEFORGE_SESSIONS_DIR   shared session storage (SSH/sync)
   CODEFORGE_PLUGIN_DIR     extra plugins path
   CODEFORGE_TELEMETRY=1    opt-in local telemetry
@@ -480,6 +505,7 @@ Flags:
   --act            Apply writes immediately (default for one-shot)
   --always-approve, --yolo  Bypass ask (deny rules still apply)
   --dont-ask       Deny anything that would prompt (CI lockdown)
+  --sandbox MODE   OS sandbox: off|workspace|read-only|strict|devbox
   --model, -m      Model id for current provider
   --workdir, -C    Project directory
   --timeout SEC    One-shot timeout (default 600)
@@ -489,7 +515,7 @@ Flags:
   --secret TOKEN   serve auth (or CODEFORGE_AGENT_SECRET)
 
 ACP methods: initialize, session/new, session/load, session/prompt, session/cancel
-See docs/ACP.md
+See docs/ACP.md · docs/SANDBOX.md
 `
 }
 

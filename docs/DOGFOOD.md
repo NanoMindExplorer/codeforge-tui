@@ -67,7 +67,7 @@ Use this side-by-side with Grok Build TUI for a day of real work. Mark each item
 
 ## Honest remaining gaps (Could)
 
-- OS-level sandbox (bubblewrap/seatbelt) — not shipped  
+- Process-wide Landlock/Seatbelt at startup (G4 ships per-command bwrap + soft path policy)  
 - Full Grok `x.ai/*` ACP extension methods — subset only  
 - Provider reasoning streams as real thought tokens — synthetic thinking OK  
 - Full Grok welcome screen / pager.toml matrix — partial  

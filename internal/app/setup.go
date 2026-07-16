@@ -15,6 +15,7 @@ import (
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/research"
 	"github.com/codeforge/tui/internal/rules"
+	"github.com/codeforge/tui/internal/sandbox"
 	"github.com/codeforge/tui/internal/telemetry"
 	"github.com/codeforge/tui/internal/tool"
 	"github.com/codeforge/tui/internal/workspace"
@@ -41,6 +42,9 @@ type Options struct {
 	SkipPlugins bool
 	ActMode     bool // force Act write mode (headless default often Act)
 	PlanMode    bool // force Plan
+	// Sandbox profile override (empty = use config / env).
+	Sandbox        string
+	SandboxFlagSet bool // true when CLI --sandbox was passed
 }
 
 // Bootstrap loads config, providers, tools, index, plugins, MCP.
@@ -98,6 +102,21 @@ func Bootstrap(opt Options) (*Runtime, error) {
 		ws.SetIgnoreDirs(cfg.Workspace.IgnoreDirs)
 	}
 	workspace.SetGlobal(ws)
+
+	// Phase G4: Grok-compatible shell sandbox
+	prof := sandbox.ResolvePreferExplicit(opt.SandboxFlagSet, opt.Sandbox, cfg.Sandbox.Profile)
+	eng := sandbox.Ensure(prof, workdir)
+	if len(cfg.Sandbox.Deny) > 0 {
+		eng.Deny = append([]string(nil), cfg.Sandbox.Deny...)
+	}
+	if !eng.IsOff() {
+		logf("✓ %s\n", eng.Summary())
+		sandbox.LogEvent("activate", map[string]any{
+			"profile": string(eng.Profile),
+			"backend": string(eng.Backend),
+			"workdir": workdir,
+		})
+	}
 
 	var extra []string
 	for _, r := range ws.ListRoots() {

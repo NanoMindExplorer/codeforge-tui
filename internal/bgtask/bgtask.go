@@ -5,13 +5,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/codeforge/tui/internal/redact"
+	"github.com/codeforge/tui/internal/sandbox"
 )
 
 // Status of a background task.
@@ -75,16 +74,26 @@ func (m *Manager) Start(workdir, command string) (*Task, error) {
 }
 
 func (m *Manager) run(ctx context.Context, t *Task) {
-	shell, flag := "/bin/sh", "-c"
-	if runtime.GOOS == "windows" {
-		shell, flag = "cmd", "/C"
+	sbx := sandbox.Global()
+	cmd, err := sbx.CommandIn(ctx, t.WorkDir, t.Command)
+	if err != nil {
+		m.mu.Lock()
+		t.Ended = time.Now()
+		t.Status = Failed
+		t.Output = "sandbox: " + err.Error()
+		m.mu.Unlock()
+		if m.OnUpdate != nil {
+			m.OnUpdate(*t)
+		}
+		return
 	}
-	cmd := exec.CommandContext(ctx, shell, flag, t.Command)
-	cmd.Dir = t.WorkDir
+	if cmd.Dir == "" {
+		cmd.Dir = t.WorkDir
+	}
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
-	err := cmd.Run()
+	err = cmd.Run()
 
 	m.mu.Lock()
 	t.Ended = time.Now()

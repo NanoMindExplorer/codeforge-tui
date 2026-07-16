@@ -7,15 +7,14 @@ import (
     "fmt"
     "io/fs"
     "os"
-    "os/exec"
     "path/filepath"
     "regexp"
-    "runtime"
     "strings"
     "time"
 
     "github.com/codeforge/tui/internal/diff"
     "github.com/codeforge/tui/internal/redact"
+    "github.com/codeforge/tui/internal/sandbox"
     "github.com/codeforge/tui/internal/workspace"
 )
 
@@ -84,6 +83,9 @@ func (f *FileReader) Execute(input json.RawMessage) Result {
     if err != nil {
         return Result{Error: err.Error()}
     }
+    if err := sandbox.Global().CheckRead(path); err != nil {
+        return Result{Error: err.Error()}
+    }
     data, err := os.ReadFile(path)
     if err != nil {
         return Result{Error: fmt.Sprintf("read: %v", err)}
@@ -140,6 +142,9 @@ func (f *FileWriter) Execute(input json.RawMessage) Result {
     }
     path, err := resolvePath(f.WorkDir, in.Path)
     if err != nil {
+        return Result{Error: err.Error()}
+    }
+    if err := sandbox.Global().CheckWrite(path); err != nil {
         return Result{Error: err.Error()}
     }
 
@@ -429,19 +434,21 @@ func (s *ShellExec) Execute(input json.RawMessage) Result {
     ctx, cancel := context.WithTimeout(context.Background(), to)
     defer cancel()
 
-    shell, flag := "/bin/sh", "-c"
-    if runtime.GOOS == "windows" {
-        shell, flag = "cmd", "/C"
+    sbx := sandbox.Global()
+    cmd, err := sbx.Command(ctx, in.Command)
+    if err != nil {
+        return Result{Error: "sandbox: " + err.Error()}
     }
-
-    cmd := exec.CommandContext(ctx, shell, flag, in.Command)
-    cmd.Dir = s.WorkDir
+    if cmd.Dir == "" {
+        cmd.Dir = s.WorkDir
+    }
     var outBuf bytes.Buffer
     cmd.Stdout = &outBuf
     cmd.Stderr = &outBuf
     runErr := cmd.Run()
 
-    output := redact.Redact(outBuf.String())
+    prefix := sbx.SoftNote()
+    output := prefix + redact.Redact(outBuf.String())
     if len(output) > shellMaxOutput {
         output = output[:shellMaxOutput] + "\n... (output truncated)"
     }

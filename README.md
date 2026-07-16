@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
-[![Version](https://img.shields.io/badge/version-v1.1.1-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
+[![Version](https://img.shields.io/badge/version-v1.2.0-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v1.1.1` |
+| **Version** | `v1.2.0` |
 
 CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
@@ -20,13 +20,13 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 ## Grok 4.5 parity
 
-CodeForge **v1.1.1** is a **Grok Build TUI–compatible** coding agent with **Grok 4.5** (xAI) as a first-class model, full Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …), plus ACP for IDEs.
+CodeForge **v1.2.0** is a **Grok Build TUI–compatible** coding agent with **Grok 4.5** (xAI) as a first-class model, full Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …), plus ACP for IDEs.
 
 → Roadmap: **[docs/GROK_PARITY_ROADMAP.md](./docs/GROK_PARITY_ROADMAP.md)** · Dogfood: **[docs/DOGFOOD.md](./docs/DOGFOOD.md)** · ACP: **[docs/ACP.md](./docs/ACP.md)**
 
 ### Honest remaining gaps (Could)
 
-- OS-level sandbox (bubblewrap / Seatbelt)  
+- Process-wide Landlock/Seatbelt (G4 ships soft+bwrap profiles — [docs/SANDBOX.md](./docs/SANDBOX.md))  
 - Full Grok `x.ai/*` ACP extension surface  
 - Provider-native reasoning token streams (synthetic thinking is used)  
 - Pixel-perfect `pager.toml` matrix
@@ -61,7 +61,7 @@ CodeForge **v1.1.1** is a **Grok Build TUI–compatible** coding agent with **Gr
 |------|----------------|
 | **TUI** | **Grok 4.5–style**: full-width scrollback + bottom `❯` prompt · GrokNight theme · optional Diff/Files drawers (`Ctrl+B`). |
 | **Streaming chat** | Real-time token stream; assistant replies rendered as **Markdown** with **syntax-highlighted** code (Glamour). |
-| **Agent loop** | Tool-calling agent: `read_file`, `write_file`, `list_dir`, `grep_search`, `run_command` (sandboxed to project root). |
+| **Agent loop** | Tool-calling agent: `read_file`, `write_file`, `list_dir`, `grep_search`, `run_command` (project path + optional OS sandbox profiles). |
 | **Trust layer** | **Plan mode (default):** writes are staged → multi-file **review** before disk. **Act mode:** writes apply immediately. |
 | **Diff pane** | Rich unified diffs: gutters, `+N/-M` badges, multi-file tabs, pending badge. |
 | **Files pane** | Live project listing, AI “touched” highlights, optional git status glyphs. |

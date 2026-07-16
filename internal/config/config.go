@@ -23,6 +23,16 @@ type Config struct {
     Telemetry       TelemetryConfig     `mapstructure:"telemetry"`
     UI              UIConfig            `mapstructure:"ui"`
     Session         SessionConfig       `mapstructure:"session"`
+    // Sandbox is Grok-compatible OS shell sandbox (Phase G4).
+    Sandbox         SandboxConfig       `mapstructure:"sandbox"`
+}
+
+// SandboxConfig selects a profile: off | workspace | read-only | strict | devbox.
+type SandboxConfig struct {
+    // Profile default when --sandbox / CODEFORGE_SANDBOX not set.
+    Profile string `mapstructure:"profile"`
+    // Deny extra paths/globs blocked for read+write (soft always; bwrap when available).
+    Deny []string `mapstructure:"deny"`
 }
 
 // SessionConfig controls session lifecycle (Phase 4).
@@ -214,6 +224,10 @@ func Default() *Config {
         },
         Session: SessionConfig{
             AutoCompactPct: 0.85,
+        },
+        Sandbox: SandboxConfig{
+            Profile: "off",
+            Deny:    nil,
         },
     }
 }

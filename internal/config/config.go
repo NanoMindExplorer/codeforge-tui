@@ -29,6 +29,11 @@ type UIConfig struct {
     // VimMode enables j/k/h/l/g/G single-letter scrollback bindings (Grok vim_mode).
     VimMode     bool `mapstructure:"vim_mode"`
     CompactMode bool `mapstructure:"compact_mode"`
+    // Theme overrides top-level theme when set (Grok [ui].theme).
+    Theme string `mapstructure:"theme"`
+    // AutoDarkTheme / AutoLightTheme map system appearance when theme=auto.
+    AutoDarkTheme  string `mapstructure:"auto_dark_theme"`
+    AutoLightTheme string `mapstructure:"auto_light_theme"`
 }
 
 // PluginsConfig lists extra plugin search directories.
@@ -103,7 +108,7 @@ type PermissionsConfig struct {
 func Default() *Config {
     return &Config{
         DefaultProvider: "gemini",
-        Theme:           "aurora",
+        Theme:           "groknight",
         DiffMode:        "unified",
         NoMotion:        false,
         Providers: map[string]Provider{
@@ -169,8 +174,11 @@ func Default() *Config {
             LocalOnly: true,
         },
         UI: UIConfig{
-            VimMode:     false,
-            CompactMode: false,
+            VimMode:        false,
+            CompactMode:    false,
+            Theme:          "",
+            AutoDarkTheme:  "groknight",
+            AutoLightTheme: "grokday",
         },
     }
 }

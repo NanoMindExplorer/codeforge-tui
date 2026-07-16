@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
-[![Version](https://img.shields.io/badge/version-v0.3.0-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
+[![Version](https://img.shields.io/badge/version-v0.9.2-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v0.8.0` |
+| **Version** | `v0.9.2` |
 
 CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
@@ -20,7 +20,7 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 ## Grok 4.5 parity
 
-CodeForge v0.8+ aims for **Grok Build TUI–compatible** UX. The phased plan to true 1:1 parity:
+CodeForge **v0.9.2** ships Phases 1–3 of **Grok Build TUI–compatible** UX. The full plan to 1:1 parity:
 
 → **[docs/GROK_PARITY_ROADMAP.md](./docs/GROK_PARITY_ROADMAP.md)** (Phase 0–9)
 
@@ -76,7 +76,7 @@ CodeForge v0.8+ aims for **Grok Build TUI–compatible** UX. The phased plan to 
 | **Plugins** | YAML command plugins in `~/.codeforge/plugins/` → `plugin_*` tools. |
 | **Session sync** | Export/import CLI + `CODEFORGE_SESSIONS_DIR` shared storage. |
 | **Telemetry** | Opt-in, local JSONL, no prompts/source (privacy-first). |
-| **Theme** | Aurora Dark design tokens; light theme; optional `~/.codeforge/theme.yaml`. |
+| **Theme** | GrokNight/Day · TokyoNight · RosePine · Oscura · `auto` · `/theme` live picker · quantize · `--minimal`. |
 | **Motion** | Breathing gradient borders, typewriter system messages, toast notifications. Disable with `--no-motion`. |
 | **Portable** | Pure Go, `CGO_ENABLED=0`, Termux / Android friendly (~21MB single binary). |
 
@@ -128,7 +128,7 @@ codeforge --no-motion
 
 ```bash
 codeforge version
-# → codeforge 0.8.0
+# → codeforge 0.9.2
 ```
 
 ---
@@ -282,8 +282,8 @@ codeforge --skip-wizard --no-motion
 | `Ctrl+K` | Palette |
 | `Shift+Tab` | Plan ↔ Act |
 | `Ctrl+B` | Toggle side panels |
-| `/theme` | Cycle GrokNight · Aurora · TokyoNight · GrokDay |
-| `/compact-mode` | Tighter padding |
+| `/theme` | Live-preview picker · or `/theme tokyonight` / `auto` |
+| `/compact-mode` | Tighter padding (outer_vpad=0) |
 
 ### Chat vs agent
 
@@ -681,6 +681,8 @@ codeforge [workdir] [flags]
   workdir          Optional project directory (default: current directory)
 
   --no-motion      Disable animations (slow SSH / Termux)
+  --minimal        No chrome; terminal-native 16 colors
+  --compact        Tighter padding (same as /compact-mode)
   --skip-wizard    Skip first-run setup wizard
   -y, --yes        Same as --skip-wizard
   -h, --help       Print CLI help
@@ -693,6 +695,8 @@ Examples:
 codeforge
 codeforge ~/src/myapp
 codeforge --skip-wizard --no-motion ~/src/myapp
+codeforge --minimal --compact
+CODEFORGE_THEME=auto codeforge
 ```
 
 ---
@@ -708,7 +712,10 @@ codeforge --skip-wizard --no-motion ~/src/myapp
 | `OLLAMA_HOST` | Ollama base URL (default `http://127.0.0.1:11434`) |
 | `OLLAMA_MODEL` | Default Ollama model (default `llama3.2`) |
 | `GITHUB_TOKEN` / `GH_TOKEN` | GitHub REST auth (optional if `gh auth login` is done) |
-| `CODEFORGE_THEME` | `aurora` (default) or `light` |
+| `CODEFORGE_THEME` | `groknight` (default), `grokday`, `tokyonight`, `rosepine`, `oscura`, `aurora`, `auto` |
+| `CODEFORGE_AUTO_DARK` / `CODEFORGE_AUTO_LIGHT` | Themes mapped when `theme=auto` |
+| `CODEFORGE_COMPACT` / `CODEFORGE_MINIMAL` | Compact padding / terminal-native 16-color chrome |
+| `CODEFORGE_COLOR` | Force quantize: `true` · `256` · `16` · `none` |
 | `CODEFORGE_NO_MOTION` | `1` / `true` disables motion |
 | `CODEFORGE_PLAIN_MD` / `CODEFORGE_NO_GLAMOUR` | Skip rich markdown (faster / leaner) |
 | `NERD_FONT` / `NERD_FONTS` | Prefer Nerd Font file/git glyphs |
@@ -734,7 +741,11 @@ Example `config.yaml` keys (see generated file for full template):
 
 ```yaml
 default_provider: gemini
-theme: aurora
+theme: groknight   # or auto / tokyonight / rosepine / oscura
+ui:
+  compact_mode: false
+  auto_dark_theme: groknight
+  auto_light_theme: grokday
 permissions:
   require_confirm_write: true   # Plan-style staging when true
   require_confirm_shell: true

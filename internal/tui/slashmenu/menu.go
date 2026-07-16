@@ -49,7 +49,7 @@ func DefaultItems() []Item {
 		{"/budget", "Budget status"},
 		{"/rules", "Show project rules"},
 		{"/index", "Codebase index stats"},
-		{"/theme", "Cycle / set theme"},
+		{"/theme", "Theme picker (live preview)"},
 		{"/compact-mode", "Toggle compact UI"},
 		{"/vim-mode", "Toggle vim scrollback keys"},
 		{"/sessions", "List / resume sessions"},

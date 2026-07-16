@@ -25,8 +25,10 @@ import (
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/codeforge/tui/internal/tool"
 	"github.com/codeforge/tui/internal/tui/slashmenu"
+	"github.com/codeforge/tui/internal/tui/themepicker"
 	"github.com/codeforge/tui/internal/ui/components"
 	"github.com/codeforge/tui/internal/ui/filepicker"
+	"github.com/codeforge/tui/internal/ui/markdown"
 	"github.com/codeforge/tui/internal/ui/palette"
 	"github.com/codeforge/tui/internal/ui/review"
 )
@@ -60,6 +62,7 @@ type Model struct {
 	picker  filepicker.Model
 	review  review.Model
 	slash   slashmenu.Model
+	themes  themepicker.Model
 	toast   components.Toast
 
 	streamCh <-chan provider.StreamToken
@@ -86,6 +89,9 @@ type Model struct {
 	tokenWindow int
 }
 
+// AutoThemeTickMsg re-checks system appearance when theme=auto.
+type AutoThemeTickMsg struct{}
+
 type Pane int
 
 const (
@@ -103,6 +109,7 @@ const (
 	ModePalette
 	ModeFilePick
 	ModeReview
+	ModeThemePick
 )
 
 func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry, repo *git.Repo, workdir string) Model {
@@ -149,6 +156,7 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		picker:      filepicker.New(workdir),
 		review:      review.New(),
 		slash:       slashmenu.New(),
+		themes:      themepicker.New(),
 		session:     sess,
 		ghClient:    ghc,
 		vimMode:     vim,
@@ -164,7 +172,7 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		m.chat.Init(),
 		m.context.Init(),
 		spinnerTick(),
@@ -186,7 +194,17 @@ func (m Model) Init() tea.Cmd {
 			slug, _ := m.ghClient.RepoSlug(ctx)
 			return GitHubStatusMsg{User: user, Repo: slug, OK: true}
 		},
-	)
+	}
+	if theme.IsAuto() {
+		cmds = append(cmds, autoThemeTick())
+	}
+	return tea.Batch(cmds...)
+}
+
+func autoThemeTick() tea.Cmd {
+	return tea.Tick(theme.AutoPollInterval, func(t time.Time) tea.Msg {
+		return AutoThemeTickMsg{}
+	})
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -210,6 +228,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nc, _ := m.chat.Update(msg)
 		m.chat = nc.(ChatModel)
 		cmds = append(cmds, spinnerTick())
+
+	case AutoThemeTickMsg:
+		if theme.IsAuto() {
+			before := theme.DisplayName()
+			theme.ResolveAuto()
+			if theme.DisplayName() != before {
+				m.onThemeApplied()
+			}
+			cmds = append(cmds, autoThemeTick())
+		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -240,9 +268,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// ── Steal-Esc stack (Grok order) ─────────────
-		// 1) Review  2) Palette  3) File pick  4) Command  5) Slash menu  6) clear/rewind
+		// 1) Review  2) Theme pick  3) Palette  4) File pick  5) Command  6) Slash  7) clear/rewind
 		if m.mode == ModeReview {
 			return m.updateReview(msg)
+		}
+		if m.mode == ModeThemePick {
+			return m.updateThemePicker(msg)
 		}
 		if m.mode == ModePalette {
 			return m.updatePalette(msg)
@@ -1033,13 +1064,9 @@ func (m *Model) budgetBlocks() bool {
 }
 
 func (m *Model) recalcSizes() {
-	// Grok layout: footer(1) + hints(1) + prompt(~5) + toast + scrollback rest
-	footerH := 2
-	promptH := 6
-	if theme.CompactMode() {
-		promptH = 4
-		footerH = 1
-	}
+	// Grok layout padding matrix (full / compact / minimal)
+	footerH := theme.FooterHeight()
+	promptH := theme.PromptHeight()
 	if m.toast.Alive() {
 		footerH++
 	}
@@ -1188,6 +1215,9 @@ func (m Model) View() string {
 		parts = append(parts, m.palette.View())
 	case ModeFilePick:
 		parts = append(parts, m.picker.View())
+	case ModeThemePick:
+		m.themes.Width = m.width
+		parts = append(parts, m.themes.View())
 	}
 
 	// Slash menu floats above composer
@@ -1197,11 +1227,74 @@ func (m Model) View() string {
 	}
 	// Composer + Grok footer
 	parts = append(parts, m.chat.ViewPrompt(m.focusPrompt))
-	parts = append(parts, m.status.ViewFooter())
-	if !theme.CompactMode() {
-		parts = append(parts, m.status.ViewBottom())
+	if !theme.MinimalMode() {
+		parts = append(parts, m.status.ViewFooter())
+		if !theme.CompactMode() {
+			parts = append(parts, m.status.ViewBottom())
+		}
+	} else {
+		// minimal: one slim status line only
+		parts = append(parts, m.status.ViewFooter())
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+}
+
+// updateThemePicker handles /theme interactive list (live preview).
+func (m Model) updateThemePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		m.themes.Cancel()
+		m.mode = ModeInsert
+		m.focusPrompt = true
+		m.chat.FocusInput()
+		m.onThemeApplied()
+		m.toast = components.NewToast("Theme reverted", "info", 2*time.Second)
+		return m, nil
+	case "up", "k":
+		m.themes.Move(-1)
+		theme.ApplyCursorColor()
+		return m, nil
+	case "down", "j":
+		m.themes.Move(1)
+		theme.ApplyCursorColor()
+		return m, nil
+	case "enter":
+		m.themes.Confirm()
+		name := m.themes.Selected()
+		m.mode = ModeInsert
+		m.focusPrompt = true
+		m.chat.FocusInput()
+		m.onThemeApplied()
+		m.chat.AddSystemMessage("Theme → " + theme.Name())
+		m.toast = components.NewToast("Theme: "+name, "success", 2*time.Second)
+		var cmds []tea.Cmd
+		if theme.IsAuto() {
+			cmds = append(cmds, autoThemeTick())
+		}
+		return m, tea.Batch(cmds...)
+	}
+	return m, nil
+}
+
+// onThemeApplied refreshes derived theme state (cursor, glamour, status).
+func (m *Model) onThemeApplied() {
+	theme.ApplyCursorColor()
+	markdown.InvalidateRenderer()
+	m.status.ThemeName = theme.Name()
+	m.recalcSizes()
+}
+
+// openThemePicker starts live-preview theme selection.
+func (m *Model) openThemePicker() {
+	if theme.MinimalMode() {
+		m.chat.AddSystemMessage("Themes unavailable in --minimal mode")
+		return
+	}
+	m.slash.Close()
+	m.themes.Open()
+	m.mode = ModeThemePick
+	m.focusPrompt = false
+	m.chat.BlurInput()
 }
 
 func paneName(p Pane) string {
@@ -1489,17 +1582,31 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 		return nil
 
 	case "theme", "t":
+		if theme.MinimalMode() {
+			m.chat.AddSystemMessage("Themes unavailable in --minimal mode (terminal-native 16 colors)")
+			return nil
+		}
 		if argStr == "" {
+			// Open live-preview picker (Grok parity); bare cycle via /theme cycle
+			m.openThemePicker()
+			return nil
+		}
+		if strings.EqualFold(argStr, "cycle") || strings.EqualFold(argStr, "next") {
 			name := theme.Cycle()
-			m.chat.AddSystemMessage("Theme → " + name + "  (or /theme groknight|aurora|tokyonight|grokday)")
+			m.onThemeApplied()
+			m.chat.AddSystemMessage("Theme → " + name)
 			m.toast = components.NewToast("Theme: "+name, "info", 2*time.Second)
 			return nil
 		}
 		if theme.SetByName(argStr) {
-			m.chat.AddSystemMessage("Theme → " + theme.Name())
+			m.onThemeApplied()
+			m.chat.AddSystemMessage("Theme → " + theme.Name() + "  · color " + theme.ColorLevelName(theme.DetectColorLevel()))
 			m.toast = components.NewToast("Theme: "+theme.Name(), "success", 2*time.Second)
+			if theme.IsAuto() {
+				return autoThemeTick()
+			}
 		} else {
-			m.chat.AddSystemMessage("Unknown theme. Use: " + strings.Join(theme.ThemeNames(), ", "))
+			m.chat.AddSystemMessage("Unknown theme. Use: " + strings.Join(theme.ThemeNames(), ", ") + "\n  /theme          open picker\n  /theme cycle    next theme")
 		}
 		return nil
 
@@ -2141,7 +2248,7 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge · Grok-parity Phase 2  ·  v0.9.1
+	return `CodeForge · Grok-parity Phase 3  ·  v0.9.2
 
 FOCUS (steal-Esc order: overlay → slash → @ → clear/rewind)
   Tab            Prompt ↔ scrollback
@@ -2161,16 +2268,23 @@ INPUT
   @              File picker · !hidden · path:10-50
   Ctrl+K         Palette
   Shift+Tab      Plan ↔ Act
-  /theme /compact-mode /vim-mode
+
+THEME & CHROME
+  /theme         Live-preview picker (↑↓ Enter Esc)
+  /theme NAME    groknight|grokday|tokyonight|rosepine|oscura|auto
+  /compact-mode  Tighter padding
+  --minimal      Terminal-native 16 colors, no chrome
 `
 }
 
 func aboutText() string {
-	return `CodeForge TUI v0.9.1
+	return `CodeForge TUI v0.9.2
 Created by NanoMind — 2026 — Apache 2.0
 
-Phase 1: block scrollback · Phase 2: input fidelity (slash menu, @ ranges,
-  steal-Esc, Ctrl+C policy, vim mode)
+Phase 1: block scrollback
+Phase 2: input fidelity (slash menu, @ ranges, steal-Esc, vim)
+Phase 3: GrokNight/Day · Tokyo · RosePine · Oscura · auto ·
+         /theme picker · quantize · OSC cursor · --minimal
 See docs/GROK_PARITY_ROADMAP.md
 `
 }

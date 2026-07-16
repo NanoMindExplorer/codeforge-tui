@@ -12,11 +12,12 @@ import (
 )
 
 var (
-	mu       sync.Mutex
-	renderer any
-	lastW    int
-	disabled bool
-	initOnce sync.Once
+	mu        sync.Mutex
+	renderer  any
+	lastW     int
+	lastStyle string
+	disabled  bool
+	initOnce  sync.Once
 )
 
 func initFlags() {

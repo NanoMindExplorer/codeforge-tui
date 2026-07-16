@@ -8,3 +8,6 @@ import "github.com/muesli/reflow/wordwrap"
 func renderGlamour(src string, width int) string {
 	return wordwrap.String(src, width)
 }
+
+// InvalidateRenderer is a no-op without glamour.
+func InvalidateRenderer() {}

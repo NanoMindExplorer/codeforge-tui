@@ -25,7 +25,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "0.9.1"
+	ProjectVersion = "0.9.2"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -56,11 +56,17 @@ func main() {
 func runTUI(args []string) {
 	noMotion := false
 	skipWizard := false
+	minimal := false
+	compact := false
 	var pathArgs []string
 	for _, a := range args {
 		switch a {
 		case "--no-motion":
 			noMotion = true
+		case "--minimal":
+			minimal = true
+		case "--compact":
+			compact = true
 		case "--skip-wizard", "--yes", "-y":
 			skipWizard = true
 		case "--help", "-h":
@@ -77,6 +83,12 @@ func runTUI(args []string) {
 	}
 
 	theme.InitFromEnv()
+	if minimal {
+		theme.SetMinimal(true)
+	}
+	if compact {
+		theme.SetCompact(true)
+	}
 	if noMotion {
 		theme.SetMotion(false)
 	}
@@ -94,6 +106,14 @@ func runTUI(args []string) {
 	cfg, _ := config.Load()
 	if cfg == nil {
 		cfg = config.Default()
+	}
+	// Config theme (after env; --minimal wins)
+	if !theme.MinimalMode() {
+		themeName := cfg.Theme
+		if cfg.UI.Theme != "" {
+			themeName = cfg.UI.Theme
+		}
+		theme.ApplyFromConfig(themeName, cfg.UI.CompactMode, cfg.UI.AutoDarkTheme, cfg.UI.AutoLightTheme)
 	}
 	if !skipWizard && needsWizardQuick() {
 		runWizard()
@@ -116,8 +136,14 @@ func runTUI(args []string) {
 		}
 	}
 
+	// OSC 12: cursor → accent_user for the session
+	theme.ApplyCursorColor()
+	defer theme.ResetCursorColor()
+
 	model := tui.New(rt.Cfg, rt.ProvReg, rt.ToolReg, rt.GitRepo, rt.WorkDir)
-	printBanner()
+	if !theme.MinimalMode() {
+		printBanner()
+	}
 
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
@@ -317,6 +343,8 @@ Usage:
 
 TUI flags:
   --no-motion       Disable animations
+  --minimal         No chrome; terminal-native 16 colors
+  --compact         Tighter padding (same as /compact-mode)
   --skip-wizard     Skip first-run setup
   -h, --help        Help
   -v, --version     Version
@@ -329,7 +357,11 @@ Env:
   CODEFORGE_SESSIONS_DIR   shared session storage (SSH/sync)
   CODEFORGE_PLUGIN_DIR     extra plugins path
   CODEFORGE_TELEMETRY=1    opt-in local telemetry
-  CODEFORGE_THEME, CODEFORGE_NO_MOTION, CODEFORGE_PLAIN_MD
+  CODEFORGE_THEME          groknight|grokday|tokyonight|rosepine|oscura|auto
+  CODEFORGE_AUTO_DARK / CODEFORGE_AUTO_LIGHT
+  CODEFORGE_COMPACT=1, CODEFORGE_MINIMAL=1, CODEFORGE_NO_MOTION
+  CODEFORGE_COLOR          true|256|16|none (force quantize)
+  CODEFORGE_PLAIN_MD       skip glamour
 
 `, ProjectVersion, agentUsage(), sessionUsage())
 }

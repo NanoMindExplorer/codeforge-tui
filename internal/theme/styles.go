@@ -122,21 +122,27 @@ func GradientBorder(width int, phase float64) string {
 
 func StatusBarStyle(width int) lipgloss.Style {
 	t := Current()
-	return lipgloss.NewStyle().
-		Background(t.BgSurface).
+	st := lipgloss.NewStyle().
 		Foreground(t.TextSecondary).
 		Width(width)
+	if !MinimalMode() && t.BgSurface != "" {
+		st = st.Background(t.BgSurface)
+	}
+	return st
 }
 
 func OverlayStyle(width int) lipgloss.Style {
 	t := Current()
-	return lipgloss.NewStyle().
-		Background(t.BgOverlay).
+	st := lipgloss.NewStyle().
 		Foreground(t.TextPrimary).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(t.BorderGlow).
 		Padding(1, 2).
 		Width(width)
+	if !MinimalMode() && t.BgOverlay != "" {
+		st = st.Background(t.BgOverlay)
+	}
+	return st
 }
 
 // ModeBadge Grok-style session mode pills.
@@ -170,19 +176,39 @@ func ModeBadge(mode string) string {
 // PromptFrame styles the bottom composer (Grok prompt widget).
 func PromptFrame(width int, focused bool) lipgloss.Style {
 	t := Current()
+	lay := CurrentLayout()
 	border := t.PromptBorder
 	if focused {
 		border = t.AccentUser
 	}
-	pad := 1
-	if CompactMode() {
-		pad = 0
+	st := lipgloss.NewStyle().
+		Padding(lay.PromptPadV, 1).
+		Width(width)
+	if MinimalMode() {
+		// No chrome: plain text, terminal-native colors only
+		return st.Foreground(t.TextPrimary)
 	}
-	return lipgloss.NewStyle().
+	return st.
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(border).
-		Background(t.BgElevated).
-		Padding(pad, 1).
+		Background(t.BgElevated)
+}
+
+// ScrollbarThumb returns a single-column scrollbar character styled.
+func ScrollbarThumb(active bool) string {
+	t := Current()
+	if active {
+		return lipgloss.NewStyle().Foreground(t.ScrollbarFg).Render("▐")
+	}
+	return lipgloss.NewStyle().Foreground(t.ScrollbarBg).Render("│")
+}
+
+// SelectionBox styles a selected block border using selection_border.
+func SelectionBox(width int) lipgloss.Style {
+	t := Current()
+	return lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(t.SelectionBorder).
 		Width(width)
 }
 

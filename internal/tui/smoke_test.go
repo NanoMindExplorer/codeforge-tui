@@ -55,13 +55,50 @@ func TestSmokeRender(t *testing.T) {
 	if m.agentMode != tool.ModeAct {
 		t.Fatalf("expected ACT after Shift+Tab, got mode=%v agent=%v", m.mode, m.agentMode)
 	}
-	// Theme cycle
+	// Theme picker opens (Phase 3)
 	_ = m.executeSlashCommand("/theme")
+	if m.mode != ModeThemePick {
+		t.Fatalf("expected ModeThemePick after /theme, got %v", m.mode)
+	}
+	// Set theme by name
+	m.mode = ModeInsert
+	m.themes.Close()
+	_ = m.executeSlashCommand("/theme tokyonight")
+	if theme.DisplayName() != "tokyonight" {
+		t.Fatalf("theme set: %s", theme.DisplayName())
+	}
 	// Vim mode toggle
 	before := m.vimMode
 	_ = m.executeSlashCommand("/vim-mode")
 	if m.vimMode == before {
 		t.Fatal("vim mode should toggle")
+	}
+}
+
+func TestThemePickerPreviewAndCancel(t *testing.T) {
+	theme.Set(theme.GrokNight())
+	theme.SetMotion(false)
+	reg := provider.NewRegistry()
+	_ = reg.Register(provider.NewGeminiProvider("k", "gemini-2.5-flash"))
+	m := New(config.Default(), reg, tool.NewRegistry(t.TempDir()), nil, t.TempDir())
+	nm, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = asModel(nm)
+	_ = m.executeSlashCommand("/theme")
+	m = asModel(m) // mode already set
+	if m.mode != ModeThemePick {
+		t.Fatal("picker not open")
+	}
+	// move down previews next theme
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = asModel(nm)
+	// esc reverts
+	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = asModel(nm)
+	if m.mode == ModeThemePick {
+		t.Fatal("should close on esc")
+	}
+	if theme.DisplayName() != "groknight" {
+		t.Fatalf("should revert to groknight, got %s", theme.DisplayName())
 	}
 }
 

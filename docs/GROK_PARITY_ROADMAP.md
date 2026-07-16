@@ -2,10 +2,10 @@
 
 **Goal:** Make CodeForge feel and behave **1:1** with Grok Build TUI (Grok 4.5 class) in layout, interaction, session lifecycle, permissions, and agent surface — without becoming a closed fork of proprietary code.
 
-**Current baseline:** CodeForge **v0.8.0**  
-- Grok-*inspired* layout (scrollback + `❯` prompt, GrokNight, simple-mode keys)  
+**Current baseline:** CodeForge **v0.9.2**  
+- Phase 1–3 shipped: block scrollback, input fidelity, theme/chrome parity  
 - Plan/Act, GitHub, plugins, headless agent, rules, index, MCP  
-- **Not** full Grok parity yet (fold blocks, rewind, permissions matrix, ACP, sticky headers, …)
+- **Not** full Grok parity yet (sessions/rewind, plan design mode, permissions matrix, ACP, …)
 
 **Reference:** Grok user-guide docs (`~/.grok/docs/user-guide/`) — theming, shortcuts, sessions, plan mode, permissions, agent ACP.
 
@@ -30,7 +30,7 @@ Phases are **sequential** where later ones depend on earlier UI foundations. Som
 | Area | Grok 4.5 | CodeForge v0.8 | Gap |
 |------|----------|----------------|-----|
 | Layout | Scrollback + bottom prompt + footer | ✅ Approximate | Medium (padding, sticky, scrollbar) |
-| Themes | GrokNight/Day, Tokyo, RosePine, Oscura, auto | GrokNight + 3 themes | Medium |
+| Themes | GrokNight/Day, Tokyo, RosePine, Oscura, auto | ✅ Phase 3 | Small |
 | Blocks | Foldable tool/diff/thinking/prompt blocks | Flat lines + accent bar | **Large** |
 | Focus/Esc | Double-Esc clear/rewind, steal-Esc stack | Basic Tab/Esc | Medium |
 | Vim scrollback | Optional `j/k` fold, turn jumps | Partial scroll keys | Medium |
@@ -43,7 +43,7 @@ Phases are **sequential** where later ones depend on earlier UI foundations. Som
 | Thinking | Animated reasoning blocks | Spinner only | Medium |
 | ACP / IDE | `grok agent stdio` / serve | Headless `agent --json` only | **Large** |
 | Sandbox | OS sandbox for shell | Path sandbox only | Large |
-| Compact / minimal | Full + compact + minimal | Compact only | Small |
+| Compact / minimal | Full + compact + minimal | ✅ Phase 3 | — |
 
 ---
 
@@ -132,8 +132,10 @@ Team (or you) can answer “done for v1.0 Grok-parity” with a yes/no checklist
 8. Syntax theme selection per UI theme (reuse glamour styles; optional chroma tmTheme later)
 
 ### Exit criteria
-- [ ] Side-by-side screenshots indistinguishable at a glance on truecolor  
-- [ ] `/theme` + env `CODEFORGE_THEME=auto` documented  
+- [x] Side-by-side screenshots indistinguishable at a glance on truecolor  
+- [x] `/theme` + env `CODEFORGE_THEME=auto` documented  
+
+**Shipped in v0.9.2** — themes package + themepicker + quantize + OSC + `--minimal`.
 
 ---
 

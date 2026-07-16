@@ -22,6 +22,8 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 CodeForge **v1.9.0** is a **Grok Build TUI–compatible** coding agent with **Grok 4.5** (xAI) as a first-class model, full Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …), plus ACP for IDEs.
 
+**Dogfood status:** automated + live headless evidence is green (`make dogfood`); multi-day interactive TUI field program is in [docs/dogfood/PROGRAM.md](./docs/dogfood/PROGRAM.md) — full “1:1 daily driver” is not claimed until that program completes.
+
 → Roadmap: **[docs/GROK_PARITY_ROADMAP.md](./docs/GROK_PARITY_ROADMAP.md)** · Dogfood: **[docs/DOGFOOD.md](./docs/DOGFOOD.md)** · ACP: **[docs/ACP.md](./docs/ACP.md)** · Reasoning: **[docs/REASONING.md](./docs/REASONING.md)** · Pager: **[docs/PAGER.md](./docs/PAGER.md)** · Skills: **[docs/SKILLS.md](./docs/SKILLS.md)** · Subagents: **[docs/SUBAGENTS.md](./docs/SUBAGENTS.md)**
 
 ### Honest remaining gaps (Could)

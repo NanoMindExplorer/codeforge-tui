@@ -1,4 +1,4 @@
-.PHONY: test build vet fmt fmt-check install-hooks check-version bump release-dry release-notes release-gate smoke-matrix dogfood-help termux-meta ci
+.PHONY: test build vet fmt fmt-check install-hooks check-version bump release-dry release-notes release-gate smoke-matrix dogfood dogfood-help termux-meta ci
 
 VERSION := $(shell tr -d '[:space:]' < VERSION 2>/dev/null || echo 0.0.0)
 
@@ -51,14 +51,19 @@ smoke-matrix:
 termux-meta:
 	bash contrib/termux/package.sh
 
+# Field + automated dogfood evidence → docs/dogfood/RESULTS.md
+dogfood:
+	bash scripts/dogfood-run.sh
+
 dogfood-help:
-	@echo "Dogfood log: docs/dogfood/ (see docs/DOGFOOD.md)"
-	@echo "Daily template: docs/dogfood/TEMPLATE.md"
-	@echo "Batch B–C: docs/dogfood/BATCH_BC.md"
-	@echo "Batch D–E: docs/dogfood/BATCH_DE.md"
-	@echo "Batch F:   docs/dogfood/BATCH_F.md"
-	@echo "Scorecard: docs/dogfood/SCORECARD.md"
-	@echo "Release:   docs/RELEASE_GATE.md · make release-gate"
+	@echo "Dogfood program: docs/dogfood/PROGRAM.md (10 working days)"
+	@echo "Run evidence:    make dogfood   (DOGFOOD_LIVE=0 to skip live API)"
+	@echo "Results:         docs/dogfood/RESULTS.md"
+	@echo "Daily template:  docs/dogfood/TEMPLATE.md"
+	@echo "Checklist:       docs/DOGFOOD.md"
+	@echo "Scorecard:       docs/dogfood/SCORECARD.md"
+	@echo "Batches:         BATCH_BC / BATCH_DE / BATCH_F"
+	@echo "Release gate:    docs/RELEASE_GATE.md · make release-gate"
 
 ci: check-version fmt-check vet test build
 	@echo "CI local gate OK (v$(VERSION))"

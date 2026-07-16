@@ -26,7 +26,8 @@ make release-gate
 
 | # | Check | Target | Tracker |
 |---|--------|--------|---------|
-| H1 | Dogfood **A** core loop | 100% | [DOGFOOD.md](./DOGFOOD.md) |
+| H0 | Automated dogfood suite | `make dogfood` FAIL=0 | [dogfood/RESULTS.md](./dogfood/RESULTS.md) |
+| H1 | Dogfood **A** core loop | 100% field | [DOGFOOD.md](./DOGFOOD.md) · [PROGRAM.md](./dogfood/PROGRAM.md) |
 | H2 | Dogfood **B–C** session + safety | 100% | [dogfood/BATCH_BC.md](./dogfood/BATCH_BC.md) |
 | H3 | Dogfood **D–E** Grok surface + ACP | ≥ 80% | [dogfood/BATCH_DE.md](./dogfood/BATCH_DE.md) |
 | H4 | Dogfood **F** terminal matrix | matrix filled | [dogfood/BATCH_F.md](./dogfood/BATCH_F.md) |

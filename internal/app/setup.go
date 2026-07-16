@@ -15,6 +15,7 @@ import (
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/research"
 	"github.com/codeforge/tui/internal/rules"
+	"github.com/codeforge/tui/internal/personas"
 	"github.com/codeforge/tui/internal/sandbox"
 	"github.com/codeforge/tui/internal/skills"
 	"github.com/codeforge/tui/internal/telemetry"
@@ -141,6 +142,27 @@ func Bootstrap(opt Options) (*Runtime, error) {
 	})
 	if skReg.Count() > 0 {
 		logf("✓ %s\n", skReg.Summary())
+	}
+
+	// Phase G6: personas for spawn_subagent
+	cfgPersonas := map[string]personas.Persona{}
+	for name, sp := range cfg.Subagents.Personas {
+		cfgPersonas[name] = personas.Persona{
+			Name:             name,
+			Description:      sp.Description,
+			Instructions:     sp.Instructions,
+			InstructionsFile: sp.InstructionsFile,
+			Model:            sp.Model,
+			DefaultIsolation: sp.DefaultIsolation,
+		}
+	}
+	pReg := personas.Load(personas.Options{
+		WorkDir:        workdir,
+		ConfigPersonas: cfgPersonas,
+		ExtraDirs:      cfg.Subagents.ExtraDirs,
+	})
+	if pReg.Count() > 0 {
+		logf("✓ %s\n", pReg.Summary())
 	}
 
 	if !opt.SkipIndex {

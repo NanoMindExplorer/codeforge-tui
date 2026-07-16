@@ -27,6 +27,25 @@ type Config struct {
     Sandbox         SandboxConfig       `mapstructure:"sandbox"`
     // Skills is Grok-compatible SKILL.md packages (Phase G5).
     Skills          SkillsConfig        `mapstructure:"skills"`
+    // Subagents configures personas (Phase G6).
+    Subagents       SubagentsConfig     `mapstructure:"subagents"`
+}
+
+// SubagentsConfig holds persona overlays for spawn_subagent.
+type SubagentsConfig struct {
+    // Personas map name → persona (overrides files).
+    Personas map[string]SubagentPersona `mapstructure:"personas"`
+    // ExtraDirs additional persona directories.
+    ExtraDirs []string `mapstructure:"extra_dirs"`
+}
+
+// SubagentPersona is config-file shape for a persona.
+type SubagentPersona struct {
+    Description      string `mapstructure:"description"`
+    Instructions     string `mapstructure:"instructions"`
+    InstructionsFile string `mapstructure:"instructions_file"`
+    Model            string `mapstructure:"model"`
+    DefaultIsolation string `mapstructure:"default_isolation"`
 }
 
 // SandboxConfig selects a profile: off | workspace | read-only | strict | devbox.
@@ -249,6 +268,10 @@ func Default() *Config {
             Paths:    nil,
             Ignore:   nil,
             Disabled: nil,
+        },
+        Subagents: SubagentsConfig{
+            Personas:  nil,
+            ExtraDirs: nil,
         },
     }
 }

@@ -70,3 +70,6 @@ release/
 *.keystore
 *.jks
 keystore.properties
+
+# Phase G6 subagent worktrees
+.codeforge/worktrees/

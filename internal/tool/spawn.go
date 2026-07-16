@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/codeforge/tui/internal/personas"
 	"github.com/codeforge/tui/internal/provider"
 )
 
@@ -32,36 +33,77 @@ var SubagentRunner func(
 // SubagentParentRegistry is the parent tool registry (for MCP tools on explore).
 var SubagentParentRegistry *Registry
 
-// SpawnSubagent runs a nested agent turn (Grok spawn_subagent parity).
+// SpawnSubagent runs a nested agent turn (Grok spawn_subagent parity — Phase G6).
 type SpawnSubagent struct {
 	WorkDir string
 }
 
 func (s *SpawnSubagent) Name() string { return "spawn_subagent" }
 func (s *SpawnSubagent) Description() string {
-	return `Spawn a parallel sub-agent for a focused subtask and return its final summary.
-Modes: explore (read-only, default) | general (may edit when not in DESIGN).
-Grok-compatible. Prefer for broad research or multi-file investigation.`
+	return `Spawn a focused sub-agent and return its summary (Grok-compatible).
+
+subagent_type:
+  explore — read-only research (default)
+  plan — explore + write_plan (no project source edits)
+  general-purpose | general — full tools (no nested spawn)
+
+Optional: capability_mode (read-only|read-write|execute|all),
+isolation (none|worktree), persona (researcher|concise|reviewer|custom),
+description (short label), max_iterations.`
 }
+
 func (s *SpawnSubagent) Schema() map[string]any {
 	return map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"task": map[string]any{"type": "string", "description": "What the sub-agent should do"},
+			"task": map[string]any{
+				"type":        "string",
+				"description": "Task for the sub-agent (alias: prompt)",
+			},
+			"prompt": map[string]any{
+				"type":        "string",
+				"description": "Grok-compatible alias for task",
+			},
+			"description": map[string]any{
+				"type":        "string",
+				"description": "Short 3–5 word label for the subtask",
+			},
 			"mode": map[string]any{
 				"type":        "string",
-				"description": "explore | general (default explore)",
+				"description": "Legacy alias for subagent_type: explore | general | plan",
+			},
+			"subagent_type": map[string]any{
+				"type":        "string",
+				"description": "explore | plan | general-purpose (default explore)",
+			},
+			"capability_mode": map[string]any{
+				"type":        "string",
+				"description": "read-only | read-write | execute | all",
+			},
+			"isolation": map[string]any{
+				"type":        "string",
+				"description": "none (default) | worktree (git worktree under .codeforge/worktrees/)",
+			},
+			"persona": map[string]any{
+				"type":        "string",
+				"description": "Optional persona name (researcher, concise, reviewer, or custom)",
 			},
 			"max_iterations": map[string]any{"type": "integer"},
 		},
-		"required": []string{"task"},
+		// task or prompt required — validated in Execute
 	}
 }
 
 type spawnInput struct {
-	Task          string `json:"task"`
-	Mode          string `json:"mode"`
-	MaxIterations int    `json:"max_iterations"`
+	Task            string `json:"task"`
+	Prompt          string `json:"prompt"`
+	Description     string `json:"description"`
+	Mode            string `json:"mode"`
+	SubagentType    string `json:"subagent_type"`
+	CapabilityMode  string `json:"capability_mode"`
+	Isolation       string `json:"isolation"`
+	Persona         string `json:"persona"`
+	MaxIterations   int    `json:"max_iterations"`
 }
 
 func (s *SpawnSubagent) Execute(input json.RawMessage) Result {
@@ -75,57 +117,98 @@ func (s *SpawnSubagent) ExecuteStream(input json.RawMessage, progress ProgressFu
 	}
 	task := strings.TrimSpace(in.Task)
 	if task == "" {
-		return Result{Error: "task required"}
+		task = strings.TrimSpace(in.Prompt)
+	}
+	if task == "" {
+		return Result{Error: "task or prompt required"}
 	}
 	if SubagentRunner == nil {
 		return Result{Error: "subagent runner not wired"}
 	}
-	mode := strings.ToLower(strings.TrimSpace(in.Mode))
-	if mode == "" {
-		mode = "explore"
+
+	agentType := resolveSubagentType(in.SubagentType, in.Mode)
+	capMode := ParseCapabilityMode(in.CapabilityMode)
+	// type implies default capability when not set
+	if strings.TrimSpace(in.CapabilityMode) == "" {
+		switch agentType {
+		case "explore", "plan":
+			capMode = CapReadOnly
+		default:
+			capMode = CapAll
+		}
 	}
+
+	isolation := strings.ToLower(strings.TrimSpace(in.Isolation))
+	if isolation == "" {
+		isolation = "none"
+	}
+
+	// Persona may suggest isolation
+	var persona *personas.Persona
+	if name := strings.TrimSpace(in.Persona); name != "" {
+		p, ok := personas.Global().Get(name)
+		if !ok {
+			return Result{Error: "unknown persona: " + name + " (see /personas)"}
+		}
+		if strings.TrimSpace(p.Resolved) == "" && strings.TrimSpace(p.Instructions) == "" {
+			return Result{Error: "persona has no instructions: " + name}
+		}
+		persona = p
+		if isolation == "none" && strings.EqualFold(p.DefaultIsolation, "worktree") {
+			isolation = "worktree"
+		}
+	}
+
 	maxIter := in.MaxIterations
 	if maxIter <= 0 {
 		maxIter = 6
 	}
-	if maxIter > 12 {
-		maxIter = 12
+	if maxIter > 16 {
+		maxIter = 16
 	}
 
-	var tools *Registry
-	if mode == "general" || mode == "general-purpose" {
-		tools = NewRegistry(s.WorkDir)
-		// prevent recursive spawn
-		delete(tools.tools, "spawn_subagent")
-		var order []string
-		for _, n := range tools.order {
-			if n != "spawn_subagent" {
-				order = append(order, n)
-			}
+	workdir := s.WorkDir
+	var wt *WorktreeSession
+	if isolation == "worktree" {
+		label := in.Description
+		if label == "" {
+			label = agentType
 		}
-		tools.order = order
-	} else {
-		tools = NewReadOnlyRegistry(s.WorkDir, SubagentParentRegistry)
+		sess, err := CreateWorktree(s.WorkDir, label)
+		if err != nil {
+			return Result{Error: "isolation worktree: " + err.Error()}
+		}
+		wt = sess
+		workdir = sess.Path
+		defer wt.Cleanup()
 	}
 
-	sys := `You are a CodeForge sub-agent. Complete the task and return a concise summary.
-Do not ask the user questions. Prefer read tools before concluding.`
-	if mode == "explore" {
-		sys += " You are READ-ONLY: do not edit files."
-	}
+	tools := buildSubagentTools(agentType, capMode, workdir)
+	sys := buildSubagentSystem(agentType, persona, in.Description)
 
+	label := agentType
+	if in.Description != "" {
+		label = in.Description
+	}
 	if progress != nil {
-		progress("subagent (" + mode + ") starting…")
+		msg := "subagent (" + label + ")"
+		if persona != nil {
+			msg += " persona=" + persona.Name
+		}
+		if isolation == "worktree" {
+			msg += " [worktree]"
+		}
+		progress(msg + " starting…")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 	defer cancel()
 	msgs := []provider.Message{{Role: provider.RoleUser, Content: task}}
 
 	var text strings.Builder
 	toolsUsed := 0
 	var lastErr string
-	SubagentRunner(ctx, s.WorkDir, sys, msgs, tools, maxIter, func(ev SubagentEvent) {
+	SubagentRunner(ctx, workdir, sys, msgs, tools, maxIter, func(ev SubagentEvent) {
 		switch ev.Kind {
 		case "text":
 			text.WriteString(ev.Text)
@@ -148,8 +231,81 @@ Do not ask the user questions. Prefer read tools before concluding.`
 	if out == "" {
 		out = "(subagent finished with no text)"
 	}
-	header := fmt.Sprintf("Subagent [%s] tools=%d\n\n", mode, toolsUsed)
+	header := fmt.Sprintf("Subagent type=%s cap=%s isolation=%s tools=%d",
+		agentType, capMode, isolation, toolsUsed)
+	if persona != nil {
+		header += " persona=" + persona.Name
+	}
+	if wt != nil {
+		header += "\nworktree=" + wt.Path + " branch=" + wt.Branch
+		header += "\n(worktree cleaned up after run — commit inside worktree if you need to keep changes)"
+	}
+	header += "\n\n"
 	return Result{Success: true, Output: header + out}
+}
+
+func resolveSubagentType(subType, mode string) string {
+	t := strings.ToLower(strings.TrimSpace(subType))
+	if t == "" {
+		t = strings.ToLower(strings.TrimSpace(mode))
+	}
+	switch t {
+	case "", "explore", "research", "ro":
+		return "explore"
+	case "plan", "planner", "design":
+		return "plan"
+	case "general", "general-purpose", "general_purpose", "full", "act":
+		return "general-purpose"
+	default:
+		// unknown → treat as explore for safety
+		return "explore"
+	}
+}
+
+func buildSubagentTools(agentType string, cap CapabilityMode, workdir string) *Registry {
+	parent := SubagentParentRegistry
+	switch agentType {
+	case "plan":
+		// plan registry; capability may still restrict further
+		if cap == CapReadOnly || cap == CapAll {
+			return NewPlanRegistry(workdir, parent)
+		}
+		return FilterRegistryByCapability(NewPlanRegistry(workdir, parent), cap, workdir, parent)
+	case "explore":
+		return FilterRegistryByCapability(nil, CapReadOnly, workdir, parent)
+	default:
+		base := NewRegistry(workdir)
+		return FilterRegistryByCapability(base, cap, workdir, parent)
+	}
+}
+
+func buildSubagentSystem(agentType string, persona *personas.Persona, desc string) string {
+	var b strings.Builder
+	b.WriteString("You are a CodeForge sub-agent. Complete the task and return a concise summary.\n")
+	b.WriteString("Do not ask the user questions. Prefer tools for evidence.\n")
+	if desc != "" {
+		b.WriteString("Task label: ")
+		b.WriteString(desc)
+		b.WriteByte('\n')
+	}
+	switch agentType {
+	case "explore":
+		b.WriteString("Mode EXPLORE: READ-ONLY. Do not edit project files. Search and summarize.\n")
+	case "plan":
+		b.WriteString("Mode PLAN: Explore the codebase, then produce a structured implementation plan.\n")
+		b.WriteString("Use write_plan for the plan document. Do NOT edit project source files.\n")
+		b.WriteString("End with a clear plan summary in your final message.\n")
+	case "general-purpose":
+		b.WriteString("Mode GENERAL: You may edit files and run commands as needed. Be careful and verify.\n")
+	}
+	if persona != nil {
+		if rem := persona.SystemReminder(); rem != "" {
+			b.WriteByte('\n')
+			b.WriteString(rem)
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
 }
 
 func truncateRunes(s string, n int) string {

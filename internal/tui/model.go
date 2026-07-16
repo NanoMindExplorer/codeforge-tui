@@ -24,6 +24,7 @@ import (
 	"github.com/codeforge/tui/internal/permission"
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/rules"
+	"github.com/codeforge/tui/internal/personas"
 	"github.com/codeforge/tui/internal/sandbox"
 	"github.com/codeforge/tui/internal/session"
 	"github.com/codeforge/tui/internal/skills"
@@ -981,7 +982,7 @@ func isImmediateSlash(cmd string) bool {
 		"/sessions", "/resume", "/new", "/fork", "/rewind", "/compact",
 		"/context", "/session-info", "/mode", "/plan", "/view-plan",
 		"/permissions", "/sandbox", "/hooks", "/todos", "/tasks", "/settings", "/copy",
-		"/memory", "/skills", "/undo", "/push", "/pull":
+		"/memory", "/skills", "/personas", "/undo", "/push", "/pull":
 		return true
 	default:
 		return false
@@ -2413,6 +2414,41 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 			m.chat.AddSystemMessage("Usage: /todos [add|done|progress|clear]")
 		}
 
+	case "personas", "persona":
+		if len(args) == 0 || strings.EqualFold(args[0], "list") || strings.EqualFold(args[0], "ls") {
+			m.chat.AddSystemMessage(personas.Global().RenderList())
+			return nil
+		}
+		if strings.EqualFold(args[0], "reload") {
+			cfgP := map[string]personas.Persona{}
+			var extra []string
+			if m.cfg != nil {
+				for name, sp := range m.cfg.Subagents.Personas {
+					cfgP[name] = personas.Persona{
+						Name: name, Description: sp.Description, Instructions: sp.Instructions,
+						InstructionsFile: sp.InstructionsFile, Model: sp.Model, DefaultIsolation: sp.DefaultIsolation,
+					}
+				}
+				extra = m.cfg.Subagents.ExtraDirs
+			}
+			reg := personas.Load(personas.Options{WorkDir: m.workdir, ConfigPersonas: cfgP, ExtraDirs: extra})
+			m.chat.AddSystemMessage("✓ Reloaded " + reg.Summary())
+			return nil
+		}
+		if p, ok := personas.Global().Get(args[0]); ok {
+			body := p.Resolved
+			if body == "" {
+				body = p.Instructions
+			}
+			if len(body) > 2500 {
+				body = body[:2500] + "\n…"
+			}
+			m.chat.AddSystemMessage(fmt.Sprintf("Persona %s\n%s\n\n%s\n\nUse: spawn_subagent persona=%s",
+				p.Name, p.Description, body, p.Name))
+			return nil
+		}
+		m.chat.AddSystemMessage("Unknown persona: " + args[0])
+
 	case "skills", "skill":
 		// /skills [list|reload|<name>]
 		if len(args) == 0 || strings.EqualFold(args[0], "list") || strings.EqualFold(args[0], "ls") {
@@ -3525,7 +3561,7 @@ var slashCommands = []string{
 	"/theme", "/compact-mode", "/vim-mode",
 	"/resume", "/new", "/fork", "/rewind", "/compact", "/context", "/session-info",
 	"/mode", "/plan", "/view-plan", "/permissions", "/sandbox", "/hooks",
-	"/todos", "/tasks", "/memory", "/skills", "/settings", "/copy",
+	"/todos", "/tasks", "/memory", "/skills", "/personas", "/settings", "/copy",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
 
@@ -3539,7 +3575,7 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge · Grok 4.5 parity  ·  Phases 1–9 + G1–G5
+	return `CodeForge · Grok 4.5 parity  ·  Phases 1–9 + G1–G6
 
 SCROLLBACK
   Enter · y/Y · j/k · fold · G follow-tail
@@ -3549,28 +3585,27 @@ MODES
 
 PRODUCT
   /resume /new /fork /rewind /compact /context
-  /plan /view-plan /todos /tasks /memory /skills /settings /copy
+  /plan /view-plan /todos /tasks /memory /skills /personas /settings
   /theme /permissions /sandbox /hooks /vim-mode /compact-mode
 
 AGENT / IDE
   codeforge agent … | agent stdio | agent serve
-  Grok tools: web_search, glob, memory_*, spawn_subagent, ask_user_question
-  Skills: /skills · /skill-name  ·  Sandbox: /sandbox
-  See docs/SKILLS.md · docs/SANDBOX.md · docs/GROK_TOOLS_AND_MODEL.md
+  spawn_subagent: explore|plan|general-purpose · persona · worktree
+  Skills: /skills  ·  Personas: /personas  ·  Sandbox: /sandbox
+  See docs/SUBAGENTS.md · docs/SKILLS.md · docs/SANDBOX.md
 `
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.3.0
+	return `CodeForge TUI v1.4.0
 Created by NanoMind — 2026 — Apache 2.0
 
-Grok Build TUI–compatible (Phases 1–9 + G1–G5):
+Grok Build TUI–compatible (Phases 1–9 + G1–G6):
   blocks · input · themes · sessions · design plan
   permissions/hooks · todos/tasks · ACP IDE bridge
-  Grok 4.5 model · full Grok tool surface + /memory
-  OS sandbox profiles · Skills (SKILL.md packages)
-Honest gaps: process-wide Landlock, full x.ai/* ACP.
-See docs/GROK_PARITY_ROADMAP.md · docs/SKILLS.md · docs/SANDBOX.md
+  Grok 4.5 · tools · sandbox · skills · subagent personas
+Honest gaps: process-wide Landlock, full x.ai/* ACP, bg subagents.
+See docs/SUBAGENTS.md · docs/SKILLS.md · docs/SANDBOX.md
 `
 }
 

@@ -79,6 +79,17 @@ Grok-compatible `SKILL.md` packages (reusable procedures).
 | Docs | [SKILLS.md](./SKILLS.md) |
 | Example | `examples/skills/commit/SKILL.md` |
 
+## Phase G6 — Subagents & Personas ✅
+
+| Item | Detail |
+|------|--------|
+| Types | `explore` · `plan` · `general-purpose` |
+| Params | `prompt`/`task`, `capability_mode`, `isolation`, `persona`, `description` |
+| Isolation | `worktree` → git worktree under `.codeforge/worktrees/` |
+| Personas | bundled researcher/concise/reviewer + YAML/TOML + config |
+| Slash | `/personas` |
+| Docs | [SUBAGENTS.md](./SUBAGENTS.md) |
+
 ### Quick start
 
 ```bash

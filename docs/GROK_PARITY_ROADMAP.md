@@ -2,9 +2,9 @@
 
 **Goal:** Make CodeForge feel and behave **1:1** with Grok Build TUI (Grok 4.5 class) in layout, interaction, session lifecycle, permissions, and agent surface — without becoming a closed fork of proprietary code.
 
-**Current baseline:** CodeForge **v1.3.0**  
-- Phase 0–9 + **G1–G5** (model, tools, integration, OS sandbox, **Skills**)  
-- Honest gaps remain as **Could** (process-wide Landlock/Seatbelt, full x.ai/* ACP)
+**Current baseline:** CodeForge **v1.4.0**  
+- Phase 0–9 + **G1–G6** (model, tools, sandbox, skills, **subagents/personas**)  
+- Honest gaps remain as **Could** (process-wide Landlock, bg subagents, full x.ai/* ACP)
 
 **Reference:** Grok user-guide docs (`~/.grok/docs/user-guide/`) — theming, shortcuts, sessions, plan mode, permissions, agent ACP.
 

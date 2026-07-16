@@ -610,7 +610,8 @@ TOOLS (Grok-compatible names preferred):
 - Shell: run_terminal_command|run_command (background=true for long jobs)
 - Web: web_search, web_fetch|fetch_url
 - Memory: memory_search, memory_write
-- Tasks: todo_write; spawn_subagent (mode explore|general); research
+- Tasks: todo_write; research
+- Subagents: spawn_subagent (subagent_type explore|plan|general-purpose; capability_mode; isolation worktree; persona)
 - Plan: enter_plan_mode, write_plan, exit_plan_mode, ask_user_question|ask_user
 - Verify: diagnostics · GitHub: github · MCP: mcp_*
 - Skills: when a listed skill matches the task, follow its procedure (or user runs /skill-name)

@@ -1,0 +1,362 @@
+# CodeForge → Grok 4.5 Parity Roadmap
+
+**Goal:** Make CodeForge feel and behave **1:1** with Grok Build TUI (Grok 4.5 class) in layout, interaction, session lifecycle, permissions, and agent surface — without becoming a closed fork of proprietary code.
+
+**Current baseline:** CodeForge **v0.8.0**  
+- Grok-*inspired* layout (scrollback + `❯` prompt, GrokNight, simple-mode keys)  
+- Plan/Act, GitHub, plugins, headless agent, rules, index, MCP  
+- **Not** full Grok parity yet (fold blocks, rewind, permissions matrix, ACP, sticky headers, …)
+
+**Reference:** Grok user-guide docs (`~/.grok/docs/user-guide/`) — theming, shortcuts, sessions, plan mode, permissions, agent ACP.
+
+---
+
+## How to read this plan
+
+| Term | Meaning |
+|------|---------|
+| **Parity** | Same *user-visible behavior* and *mental model*, not line-for-line source |
+| **Phase** | Shipable slice: each ends with demo checklist + tests green |
+| **Must** | Required for “1:1 enough to dogfood as Grok replacement for coding” |
+| **Should** | Strongly expected by Grok users |
+| **Could** | Nice-to-have / later polish |
+
+Phases are **sequential** where later ones depend on earlier UI foundations. Some platform work (Phase 5–6) can parallelize after Phase 2.
+
+---
+
+## Gap map (today vs Grok)
+
+| Area | Grok 4.5 | CodeForge v0.8 | Gap |
+|------|----------|----------------|-----|
+| Layout | Scrollback + bottom prompt + footer | ✅ Approximate | Medium (padding, sticky, scrollbar) |
+| Themes | GrokNight/Day, Tokyo, RosePine, Oscura, auto | GrokNight + 3 themes | Medium |
+| Blocks | Foldable tool/diff/thinking/prompt blocks | Flat lines + accent bar | **Large** |
+| Focus/Esc | Double-Esc clear/rewind, steal-Esc stack | Basic Tab/Esc | Medium |
+| Vim scrollback | Optional `j/k` fold, turn jumps | Partial scroll keys | Medium |
+| Slash UX | Instant autocomplete menu | Hint strip only | Medium |
+| `@` | Path + line ranges + gitignore | Fuzzy file list | Medium |
+| Sessions | UUID dirs, resume picker, fork, rewind, compact | JSON sessions, list/resume | **Large** |
+| Plan mode | Read-only plan.md + approval UI | Write Plan/Act only | **Large** |
+| Permissions | allow/deny/ask + modes + hooks | Plan staging only | **Large** |
+| TODOs | Task badges in footer | None | Medium |
+| Thinking | Animated reasoning blocks | Spinner only | Medium |
+| ACP / IDE | `grok agent stdio` / serve | Headless `agent --json` only | **Large** |
+| Sandbox | OS sandbox for shell | Path sandbox only | Large |
+| Compact / minimal | Full + compact + minimal | Compact only | Small |
+
+---
+
+## Phase 0 — Freeze the contract (1–2 days)
+
+**Purpose:** Agree what “1:1” means so work doesn’t sprawl.
+
+### Deliverables
+- [ ] This roadmap accepted (Must / Should / Could tagged per feature)
+- [ ] Golden **interaction checklist** (50 user actions: type, Esc×2, Tab, fold, /resume, …)
+- [ ] Screenshot board: Grok vs CodeForge (empty, streaming, tool, diff, plan approve)
+- [ ] Non-goals doc: e.g. Grok.com OAuth, proprietary model routing, full pager.toml matrix
+
+### Exit criteria
+Team (or you) can answer “done for v1.0 Grok-parity” with a yes/no checklist.
+
+---
+
+## Phase 1 — Scrollback engine (foundation)  **Must**
+
+**Purpose:** Replace flat chat lines with a real **block list** like Grok’s pager.
+
+### Work items
+1. **Block model** (`internal/tui/blocks/`)
+   - Types: `UserPrompt`, `Assistant`, `ToolCall`, `ToolResult`, `Diff`, `System`, `Thinking` (stub OK)
+   - Each block: id, parent turn id, collapsed bool, raw + rendered cache
+2. **Viewport over blocks** (not raw strings)
+   - Select block with ↑/↓ (simple) or j/k (vim mode flag)
+   - `h`/`l` or Left/Right: collapse / expand selected
+   - `E`: expand/collapse all
+3. **Sticky user headers** when scrolling past a prompt
+4. **Follow-tail** when streaming (auto jump bottom; break on manual scroll)
+5. **Scrollbar** optional thumb (theme `scrollbar_*`)
+
+### Exit criteria
+- [ ] Streaming assistant + multi-step tools appear as separate foldable blocks  
+- [ ] Collapse a tool block → diamond header only; expand restores body  
+- [ ] Manual scroll does not fight auto-follow; `G` resumes follow  
+- [ ] Smoke + golden string tests for 3 block kinds  
+
+**Depends on:** nothing  
+**Unlocks:** Phase 2–3 visuals, Phase 4 plan UI  
+
+---
+
+## Phase 2 — Grok input & focus fidelity  **Must**
+
+**Purpose:** Keyboard and composer feel identical to Grok simple mode (+ optional vim).
+
+### Work items
+1. **Focus stack / steal-Esc**  
+   Overlay → slash menu → @ picker → palette → clear/rewind semantics  
+2. **Double-Esc (800ms)**  
+   - Non-empty prompt → clear (save to history)  
+   - Empty + history → open **rewind picker** (Phase 4 can flesh storage)  
+3. **Ctrl+C policy** (match Grok)  
+   Running turn: clear draft first, second cancels agent; never confused with Esc  
+4. **Prompt history** ↑/↓ when empty or at edges  
+5. **`[ui].vim_mode`** config + `/vim-mode`  
+6. **Slash autocomplete menu** (list above prompt, fuzzy, Enter/Tab complete)  
+7. **`@` picker**  
+   - Respect `.gitignore`  
+   - Support `@path:10-50` line ranges  
+   - `!` prefix for hidden files  
+
+### Exit criteria
+- [ ] User who knows Grok shortcuts needs no CodeForge cheatsheet for input  
+- [ ] Slash and @ menus feel “instant” (<16ms key response target)  
+- [ ] Automated teatest for Esc×2 and Tab focus  
+
+---
+
+## Phase 3 — Theme & chrome parity  **Should** (visually 1:1)
+
+**Purpose:** Look like GrokNight / GrokDay on real terminals.
+
+### Work items
+1. Full **Grok color slots** (map names from theming doc):  
+   `accent_thinking`, `accent_running`, `md_*`, scrollbar, selection_border, …
+2. Built-in themes: **GrokNight, GrokDay, TokyoNight, RosePineMoon, OscuraMidnight** + `auto`
+3. **`/theme` picker** with live preview (list overlay)
+4. **Truecolor / 256 / 16** quantization helper
+5. **OSC 12** cursor → `accent_user`; reset OSC 112 on exit
+6. **Compact mode** padding matrix (match Grok outer_vpad / hpad)
+7. Optional **`--minimal`**: no chrome, terminal-native 16 colors
+8. Syntax theme selection per UI theme (reuse glamour styles; optional chroma tmTheme later)
+
+### Exit criteria
+- [ ] Side-by-side screenshots indistinguishable at a glance on truecolor  
+- [ ] `/theme` + env `CODEFORGE_THEME=auto` documented  
+
+---
+
+## Phase 4 — Session lifecycle (Grok sessions)  **Must**
+
+**Purpose:** Sessions as durable, rewindable work units.
+
+### Work items
+1. Storage layout closer to Grok:
+   ```
+   ~/.codeforge/sessions/<encoded-cwd>/<session-id>/
+     summary.json
+     updates.jsonl      # event stream
+     chat_history.jsonl
+     plan.md / plan.json
+     rewind_points.jsonl
+   ```
+2. **`/new`** (alias `/clear` behavior split: clear vs new session id)
+3. **`/resume`** full-screen session picker (preview, cwd, time)
+4. **`/fork`** branch conversation
+5. **`/rewind`** picker + restore files from rewind points (integrate checkpoint)
+6. **`/compact`** + auto-compact at N% context (config threshold)
+7. **`/context`** token breakdown UI
+8. **`/session-info`**
+9. Headless + TUI share the same session writer
+
+### Exit criteria
+- [ ] Kill terminal → `codeforge` → `/resume` → identical scrollback blocks  
+- [ ] Rewind undoes last agent file writes from that turn  
+- [ ] Export/import still work against new layout  
+
+---
+
+## Phase 5 — Plan mode (Grok plan, not just write Plan)  **Must**
+
+**Purpose:** Planning is a **read-only phase** with approval — not only staged writes.
+
+### Work items
+1. Session modes cycle: **Normal → Plan → Always-approve (Act/yolo) → Normal** (`Shift+Tab`)
+2. In **Plan (design)**:
+   - Deny write tools (except `plan.md` in session dir)
+   - Agent explores + writes plan file  
+3. **`/plan`**, **`/view-plan`**
+4. **Approval surface** on exit plan:
+   - Scroll plan, `a` approve, `s` request changes, `q` quit plan  
+5. After approve → implementation turn (existing Act/Plan-write gate still applies)
+6. Keep **write Plan/Act** naming clear in UI:  
+   - Footer: `DESIGN` vs `BUILD` vs `YOLO` (or Grok labels)
+
+### Exit criteria
+- [ ] User can force “design only” and never touch disk until `a`  
+- [ ] Approval UI matches Grok keybindings for plan review  
+
+---
+
+## Phase 6 — Permissions, hooks, safety  **Must** for trust parity
+
+**Purpose:** Grok’s allow/deny/ask pipeline.
+
+### Work items
+1. Config:
+   ```toml
+   # or yaml
+   permission_mode = "default" | "plan" | "always_approve" | "dont_ask"
+   [[permissions]]
+   tool = "run_command"
+   pattern = "rm *"
+   effect = "deny" | "ask" | "allow"
+   ```
+2. Authorization order: hooks → deny → ask → allow → remembered → defaults  
+3. Read-only auto-approve list (read/grep/list/search)  
+4. Interactive **ask modal** (y/n/always for session)  
+5. **PreToolUse / PostToolUse hooks** (scripts like Grok)  
+6. Dangerous command list never uses “remember”  
+7. Optional: OS sandbox research spike (bubblewrap/seatbelt) — Could for Phase 6.1  
+
+### Exit criteria
+- [ ] `deny run_command(rm)` hard-blocks  
+- [ ] `ask` prompts once; “always” remembered per project  
+- [ ] Plan design mode still cannot write code files  
+
+---
+
+## Phase 7 — Agent surface & product commands  **Should**
+
+**Purpose:** Same verbs users type in Grok.
+
+### Work items
+1. Slash parity set: `/new` `/resume` `/compact` `/context` `/fork` `/rewind` `/copy` `/theme` `/vim-mode` `/settings` `/plan` `/todos`
+2. **TODO/task list** block + footer badge `2/5`
+3. **Thinking blocks** (if provider streams reasoning; else synthetic “planning…” block)
+4. **Diff blocks** in scrollback (not only side pane) with expand/collapse
+5. **Fullscreen block viewer** (Enter on selected block)
+6. **Copy** `y` block / `Y` metadata  
+7. Background task list (long shell) with cancel  
+8. Align headless flags with Grok: `--always-approve`, `--model`
+
+### Exit criteria
+- [ ] Slash menu covers ≥90% of Grok’s daily commands  
+- [ ] Diff appears inline under tool write like Grok  
+
+---
+
+## Phase 8 — ACP / IDE bridge  **Should** for ecosystem 1:1
+
+**Purpose:** Editors talk to CodeForge like Grok agent mode.
+
+### Work items
+1. `codeforge agent stdio` — JSON-RPC ACP subset  
+   - session/new, session/load, prompt, cancel  
+   - stream tool calls + text  
+2. `codeforge agent serve --bind --secret` (WebSocket)  
+3. Document Zed/Neovim client wiring  
+4. Map ACP permissions to Phase 6 engine  
+
+### Exit criteria
+- [ ] Minimal ACP client can run a turn and show tools  
+- [ ] CI test with scripted stdio client  
+
+---
+
+## Phase 9 — Polish & dogfood  **Must** before claiming 1:1
+
+### Work items
+1. Side-by-side dogfood week: same tasks in Grok and CodeForge  
+2. Performance: 10k-line scrollback, 60fps animations optional  
+3. Termux / 16-color / SSH matrix  
+4. Accessibility: NO_COLOR, reduce motion  
+5. Migration guide from CodeForge v0.8 sessions → Phase 4 layout  
+6. Tag **v1.0.0-grok-parity** only when Phase 0 checklist is green  
+
+### Exit criteria
+- [ ] You stop opening Grok for daily coding for 2 weeks  
+- [ ] Public README “Grok-compatible TUI” with honest remaining Coulds  
+
+---
+
+## Suggested calendar (solo maintainer)
+
+| Phase | Effort (solo) | Cumulative |
+|-------|---------------|------------|
+| 0 Contract | 1–2 d | 2 d |
+| 1 Blocks | 1–2 w | ~2.5 w |
+| 2 Input/focus | 1 w | ~3.5 w |
+| 3 Theme | 3–5 d | ~4.5 w |
+| 4 Sessions | 1.5–2 w | ~6.5 w |
+| 5 Plan design | 1 w | ~7.5 w |
+| 6 Permissions | 1.5–2 w | ~9.5 w |
+| 7 Agent surface | 1–1.5 w | ~11 w |
+| 8 ACP | 1.5–2 w | ~13 w |
+| 9 Dogfood | 2 w | **~15 w** |
+
+Parallelize: Phase 3 after Phase 1; Phase 8 after Phase 6.
+
+---
+
+## Execution order we will follow in-repo
+
+```
+Phase 0  docs freeze
+   ↓
+Phase 1  block scrollback engine     ← next implementation target
+   ↓
+Phase 2  input / Esc / slash / @
+   ↓
+Phase 3  themes + compact + minimal
+   ↓
+Phase 4  sessions / resume / rewind / compact
+   ↓
+Phase 5  design-plan mode + approval UI
+   ↓
+Phase 6  permissions + hooks
+   ↓
+Phase 7  slash parity + todos + inline diffs
+   ↓
+Phase 8  ACP stdio/serve
+   ↓
+Phase 9  dogfood → v1.0.0
+```
+
+---
+
+## Definition of “1:1 done”
+
+All of the following are true:
+
+1. A Grok user can use CodeForge for a full day **without a cheatsheet**.  
+2. Scrollback is **block-native** (fold, select, sticky prompt).  
+3. Sessions **resume / rewind / compact** reliably.  
+4. **Design-plan** and **permission ask/deny** protect the disk.  
+5. Headless + (ideally) ACP cover automation.  
+6. Visual theme **GrokNight** matches at a glance on truecolor.
+
+Out of scope for “1:1” claim (Could forever):
+- Grok.com billing/OAuth  
+- Proprietary Grok model stack  
+- Every `pager.toml` knob  
+- Full OS sandbox on all platforms  
+
+---
+
+## Next action
+
+**Start Phase 1** (block scrollback engine) unless you want to adjust Must/Should tags first.
+
+When implementing, each phase PR should:
+- Reference this file (`Phase N`)
+- Update a living checklist at the bottom of this doc
+- Keep headless agent green  
+
+---
+
+## Living checklist
+
+### Phase 0
+- [x] Roadmap written
+- [ ] Checklist accepted by maintainer
+- [ ] Non-goals confirmed
+
+### Phase 1–9
+- [ ] Not started (track in PRs)
+
+---
+
+*Maintainer: NanoMind · CodeForge · 2026*  
+*Companion to product code at v0.8.0+*

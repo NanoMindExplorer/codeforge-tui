@@ -18,6 +18,12 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 ---
 
+## Grok 4.5 parity
+
+CodeForge v0.8+ aims for **Grok Build TUI–compatible** UX. The phased plan to true 1:1 parity:
+
+→ **[docs/GROK_PARITY_ROADMAP.md](./docs/GROK_PARITY_ROADMAP.md)** (Phase 0–9)
+
 ## Table of contents
 
 1. [Features](#features)

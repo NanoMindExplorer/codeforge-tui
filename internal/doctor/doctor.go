@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/onboarding"
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/sandbox"
@@ -65,6 +66,14 @@ func Run(opt Options) Report {
 
 	// Providers / keys
 	lines = append(lines, "Providers")
+	cfg, _ := config.Load()
+	res := onboarding.ResolveActive(cfg)
+	if res.Provider != "" {
+		info("resolution: %s — %s", res.Provider, res.Reason)
+		if len(res.Alternatives) > 0 {
+			info("also available: %s", strings.Join(res.Alternatives, ", "))
+		}
+	}
 	if opt.Registry == nil {
 		add(false, "provider registry not wired")
 	} else {
@@ -107,10 +116,12 @@ func Run(opt Options) Report {
 			mark := "○"
 			if ok {
 				mark = "✓"
-			} else {
-				// not counted as issue — optional keys
 			}
 			info("%s %-8s %s", mark, name, src)
+		}
+		nKeys := onboarding.CountPresentKeys()
+		if nKeys > 1 {
+			info("multi-key mode: %d cloud keys — active is sticky via /provider", nKeys)
 		}
 		if !onboarding.HasAnyAPIKey() && !onboarding.ProviderHealthy(opt.Registry) {
 			add(false, "no API key configured — run /setup")

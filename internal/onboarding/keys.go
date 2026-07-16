@@ -43,37 +43,15 @@ func DetectProviderFromKey(key string) string {
 	}
 }
 
-// HasAnyAPIKey is true if env or config has at least one provider key.
+// HasAnyAPIKey is true if env or config has at least one cloud provider key.
 func HasAnyAPIKey() bool {
-	for _, envs := range EnvKeys {
-		for _, e := range envs {
-			if os.Getenv(e) != "" {
-				return true
-			}
-		}
-	}
-	cfg, err := config.Load()
-	if err != nil || cfg == nil {
-		return false
-	}
-	for name, p := range cfg.Providers {
-		if name == "ollama" {
-			continue
-		}
-		if strings.TrimSpace(p.APIKey) != "" {
-			return true
-		}
-	}
-	return false
+	return CountPresentKeys() > 0
 }
 
 // KeySource describes where a provider's key comes from.
 // source examples: "env:XAI_API_KEY", "config", "missing"
 func KeySource(provider string) (source string, present bool) {
-	provider = strings.ToLower(strings.TrimSpace(provider))
-	if provider == "xai" {
-		provider = "grok"
-	}
+	provider = normalizeName(provider)
 	if provider == "ollama" {
 		return "local", true
 	}
@@ -88,7 +66,6 @@ func KeySource(provider string) (source string, present bool) {
 		if p, ok := cfg.Providers[provider]; ok && strings.TrimSpace(p.APIKey) != "" {
 			return "config", true
 		}
-		// alias xai under grok
 		if provider == "grok" {
 			if p, ok := cfg.Providers["xai"]; ok && strings.TrimSpace(p.APIKey) != "" {
 				return "config", true
@@ -99,28 +76,36 @@ func KeySource(provider string) (source string, present bool) {
 }
 
 // FormatKeySources returns a multi-line summary for /provider and /setup.
+// Prefer FormatStatus when config is available (shows active reason).
 func FormatKeySources() string {
-	order := []string{"grok", "gemini", "claude", "openai", "ollama"}
-	var b strings.Builder
-	b.WriteString("API key sources:\n")
-	for _, name := range order {
-		src, ok := KeySource(name)
-		mark := "○"
-		if ok {
-			mark = "✓"
-		}
-		b.WriteString(fmt.Sprintf("  %s %-8s  %s\n", mark, name, src))
-	}
-	b.WriteString("\nDefault priority when several keys exist: grok → gemini → config default_provider → claude/openai.\n")
-	b.WriteString("Override: /provider <name>  ·  re-run setup: /setup")
-	return b.String()
+	return FormatStatus(nil, "")
+}
+
+// FormatKeySourcesWithActive includes the currently selected registry name.
+func FormatKeySourcesWithActive(cfg *config.Config, active string) string {
+	return FormatStatus(cfg, active)
 }
 
 // EnvNameForProvider returns the preferred env var name for docs/hints.
 func EnvNameForProvider(provider string) string {
-	envs := EnvKeys[strings.ToLower(provider)]
+	envs := EnvKeys[normalizeName(provider)]
 	if len(envs) == 0 {
 		return ""
 	}
 	return envs[0]
+}
+
+// MaskKey returns a short redacted form for UI (never full secret).
+func MaskKey(key string) string {
+	key = strings.TrimSpace(key)
+	if len(key) <= 8 {
+		return "••••"
+	}
+	return key[:4] + "…" + key[len(key)-4:]
+}
+
+// ExplainPriority is a short one-liner for docs/banner.
+func ExplainPriority() string {
+	return fmt.Sprintf("Priority: %s (or config default_provider / onboarding preference)",
+		strings.Join(ProviderOrder[:4], " → "))
 }

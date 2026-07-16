@@ -27,7 +27,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "1.9.0"
+	ProjectVersion = "1.9.1"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -152,7 +152,11 @@ func runTUI(args []string) {
 	if skipWizard {
 		_ = onboarding.MarkSkipped()
 	} else if onboarding.NeedsWizard(false) {
-		_ = onboarding.RunWizard(onboarding.WizardOptions{})
+		_ = onboarding.RunWizard(onboarding.WizardOptions{Config: cfg})
+		// reload config after wizard may have written default_provider
+		if c2, err := config.Load(); err == nil && c2 != nil {
+			cfg = c2
+		}
 	}
 
 	rt, err := app.Bootstrap(app.Options{
@@ -172,8 +176,11 @@ func runTUI(args []string) {
 	if cur, err := rt.ProvReg.Current(); err == nil {
 		if err := cur.ValidateConfig(); err != nil {
 			fmt.Fprintf(os.Stderr, "\n⚠️  Provider config: %v\n", err)
-			fmt.Fprintf(os.Stderr, "   Gemini free: https://aistudio.google.com/apikey\n\n")
+			fmt.Fprintf(os.Stderr, "   Run: codeforge  (wizard) or /setup inside TUI\n")
+			fmt.Fprintf(os.Stderr, "   Grok: https://console.x.ai/  ·  Gemini free: https://aistudio.google.com/apikey\n\n")
 		}
+	} else {
+		fmt.Fprintf(os.Stderr, "\n⚠️  No AI provider. Run without --skip-wizard or: /setup gemini <key>\n\n")
 	}
 
 	// OSC 12: cursor → accent_user for the session

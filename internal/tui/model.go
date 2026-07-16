@@ -261,6 +261,19 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		m.sessionMode = tool.SessionYolo
 		m.syncWriteMode()
 	}
+	// First-run / multi-provider welcome (clear which key is active and why)
+	healthy := onboarding.ProviderHealthy(provReg)
+	activeName := provReg.CurrentName()
+	activeModel := ""
+	if cur, err := provReg.Current(); err == nil {
+		activeModel = cur.Model()
+	}
+	if onboarding.ShouldShowWelcome(healthy) {
+		m.chat.AddSystemMessage(onboarding.WelcomeMessage(cfg, activeName, activeModel, healthy))
+		if healthy {
+			_ = onboarding.MarkWelcomeShown()
+		}
+	}
 	if rb != nil && len(rb.Paths) > 0 {
 		m.chat.AddSystemMessage(rb.Summary())
 	}
@@ -1746,6 +1759,7 @@ func (m *Model) syncStatus() {
 	m.status.BgTasks = bgtask.Global.RunningCount()
 	m.status.Sandbox = sandbox.Global().Label()
 	m.status.NeedSetup = !onboarding.ProviderHealthy(m.providerReg)
+	m.status.KeyCount = onboarding.CountPresentKeys()
 	// show running subagents alongside bg shell tasks
 	if n := tool.SubJobs.RunningCount(); n > 0 {
 		m.status.BgTasks += n
@@ -2239,46 +2253,54 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 
 	case "provider", "p":
 		if len(args) == 0 {
-			var sb strings.Builder
-			sb.WriteString("Providers:\n")
-			for _, name := range m.providerReg.List() {
-				mark := "  "
-				if name == m.providerReg.CurrentName() {
-					mark = "* "
-				}
-				src, ok := onboarding.KeySource(name)
-				if !ok && name != "ollama" {
-					src = "missing"
-				}
-				sb.WriteString(fmt.Sprintf("  %s%-8s  key: %s\n", mark, name, src))
-			}
-			sb.WriteString("\n")
-			sb.WriteString(onboarding.FormatKeySources())
-			sb.WriteString("\n\nSwitch: /provider grok|gemini|claude|openai|ollama")
-			m.chat.AddSystemMessage(sb.String())
+			m.chat.AddSystemMessage(onboarding.FormatKeySourcesWithActive(m.cfg, m.providerReg.CurrentName()))
 		} else {
-			if err := m.providerReg.Switch(args[0]); err != nil {
-				m.chat.AddSystemMessage("⚠ " + err.Error() + "\n  → /setup " + args[0] + " <api-key>")
+			name := strings.ToLower(args[0])
+			if name == "xai" {
+				name = "grok"
+			}
+			if err := m.providerReg.Switch(name); err != nil {
+				m.chat.AddSystemMessage("⚠ " + err.Error() + "\n  → /setup " + name + " <api-key>")
 			} else {
-				src, _ := onboarding.KeySource(args[0])
-				m.chat.AddSystemMessage(fmt.Sprintf("✓ Provider: %s  (key: %s)", args[0], src))
-				m.toast = components.NewToast("Provider → "+args[0], "success", 2*time.Second)
+				// Persist preference so multi-key bootstrap stays stable
+				_ = onboarding.MarkCompleted(name, "")
+				_ = config.SaveDefaultProvider(name)
+				src, _ := onboarding.KeySource(name)
+				model := ""
+				if cur, err := m.providerReg.Current(); err == nil {
+					model = cur.Model()
+					if m.session != nil {
+						m.session.Provider = name
+						m.session.Model = model
+					}
+				}
+				msg := fmt.Sprintf("✓ Active provider: %s\n  key: %s", name, src)
+				if model != "" {
+					msg += "\n  model: " + model
+				}
+				others := onboarding.PresentCloudKeys()
+				if len(others) > 1 {
+					msg += "\n  (other keys kept — switch anytime with /provider <name>)"
+				}
+				m.chat.AddSystemMessage(msg)
+				m.toast = components.NewToast("Provider → "+name, "success", 2*time.Second)
 			}
 		}
 
 	case "setup":
-		// /setup | /setup <provider> | /setup <provider> <key> [model]
-		if len(args) == 0 {
+		// /setup | /setup status | /setup <provider> | /setup <provider> <key> [model]
+		if len(args) == 0 || (len(args) == 1 && (args[0] == "status" || args[0] == "show")) {
 			var sb strings.Builder
-			sb.WriteString("Setup — configure API provider\n\n")
-			sb.WriteString(onboarding.FormatKeySources())
-			sb.WriteString("\n\nUsage:\n")
-			sb.WriteString("  /setup <provider> <api-key> [model]\n")
+			sb.WriteString("Setup — multi-provider guide\n\n")
+			sb.WriteString(onboarding.FormatKeySourcesWithActive(m.cfg, m.providerReg.CurrentName()))
+			sb.WriteString("\nCommands:\n")
+			sb.WriteString("  /setup <provider> <api-key> [model]  add/replace key + make active\n")
 			sb.WriteString("  /setup grok xai-…\n")
 			sb.WriteString("  /setup gemini AIza…\n")
 			sb.WriteString("  /setup ollama\n")
+			sb.WriteString("  /provider <name>                   switch without re-pasting\n")
 			if onboarding.ProviderHealthy(m.providerReg) {
-				sb.WriteString("\nCurrent provider validates OK.")
+				sb.WriteString("\n✓ Current provider validates OK.")
 			} else {
 				sb.WriteString("\n⚠ No valid provider yet — paste a key with /setup.")
 			}
@@ -2287,16 +2309,28 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 			if _, err := onboarding.ApplyKey(m.providerReg, "ollama", "", ""); err != nil {
 				m.chat.AddSystemMessage("⚠ " + err.Error())
 			} else {
-				m.chat.AddSystemMessage("✓ Ollama ready")
+				m.chat.AddSystemMessage("✓ Ollama ready · active\n  other cloud keys (if any) still available via /provider")
 				m.toast = components.NewToast("Ollama", "success", 2*time.Second)
 			}
 		} else if len(args) == 1 {
-			// provider name only — wait for key on next line is awkward; show paste form
 			name := strings.ToLower(args[0])
+			meta := onboarding.MetaFor(name)
 			env := onboarding.EnvNameForProvider(name)
+			// If key already present, allow /setup grok to just activate
+			if src, ok := onboarding.KeySource(name); ok && name != "ollama" {
+				_ = onboarding.MarkCompleted(name, meta.DefaultModel)
+				_ = config.SaveDefaultProvider(name)
+				if err := m.providerReg.Switch(name); err != nil {
+					m.chat.AddSystemMessage(fmt.Sprintf("Key exists (%s) but provider not registered.\n  /setup %s <%s>", src, name, env))
+				} else {
+					m.chat.AddSystemMessage(fmt.Sprintf("✓ Activated %s (existing key: %s)\n  To replace key: /setup %s <new-key>", name, src, name))
+					m.toast = components.NewToast("Active → "+name, "success", 2*time.Second)
+				}
+				break
+			}
 			m.chat.AddSystemMessage(fmt.Sprintf(
-				"Paste key:\n  /setup %s <%s>\nOr export %s and restart.",
-				name, env, env,
+				"Add %s\n  /setup %s <%s>\n  shape: %s\n  docs:  %s\n  or:    export %s=… && restart",
+				meta.Title, name, env, meta.KeyHint, meta.DocsURL, env,
 			))
 		} else {
 			name := strings.ToLower(args[0])
@@ -2306,6 +2340,9 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 				model = strings.Join(args[2:], " ")
 			}
 			if det := onboarding.DetectProviderFromKey(key); det != "" {
+				if det != name {
+					m.chat.AddSystemMessage(fmt.Sprintf("ℹ key looks like %s — using that provider", det))
+				}
 				name = det
 			}
 			p, err := onboarding.ApplyKey(m.providerReg, name, key, model)
@@ -2313,7 +2350,10 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 				m.chat.AddSystemMessage(provider.FormatUserError(err))
 			} else {
 				src, _ := onboarding.KeySource(name)
-				m.chat.AddSystemMessage(fmt.Sprintf("✓ %s ready · model %s · key %s", name, p.Model(), src))
+				m.chat.AddSystemMessage(fmt.Sprintf(
+					"✓ %s ready · model %s\n  key: %s (%s)\n  switch later: /provider gemini|grok|claude|openai",
+					name, p.Model(), src, onboarding.MaskKey(key),
+				))
 				m.toast = components.NewToast("Setup OK · "+name, "success", 3*time.Second)
 				if m.session != nil {
 					m.session.Provider = name
@@ -3741,7 +3781,7 @@ MODES
   Shift+Tab      BUILD → DESIGN → YOLO
 
 PRODUCT
-  /setup /provider /doctor /model · key sources on /provider
+  /setup /provider /doctor /model · multi-key: see docs/ONBOARDING.md
   /resume /new /fork /rewind /compact /context
   /plan /todos /tasks /subagents /memory /skills /personas /settings
   /theme /permissions /sandbox /hooks /vim-mode /compact-mode
@@ -3754,7 +3794,7 @@ AGENT / IDE
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.9.0
+	return `CodeForge TUI v1.9.1
 Created by NanoMind — 2026 — Apache 2.0
 
 Grok Build TUI–compatible (Phases 1–9 + G1–G10 + W1–W4):

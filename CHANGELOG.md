@@ -5,6 +5,18 @@ All notable changes to CodeForge are documented here.
 Generate a release blurb: `make release-notes` or `bash scripts/release-notes.sh`.  
 Automated readiness: `make release-gate` (see [docs/RELEASE_GATE.md](./docs/RELEASE_GATE.md)).
 
+## [1.9.1] — 2026-07-16
+
+### Auth & onboarding (multi-provider clarity)
+
+- Shared **ResolveActive** priority: onboarding preference → config `default_provider` → grok→gemini→claude→openai.
+- Wizard paths: **no key** (catalog + paste), **single key** (confirm/add), **multi key** (pick default without re-paste).
+- TUI **welcome** explains active provider, why, and other available keys.
+- `/provider` and `/setup` show full key matrix + reason; `/provider X` persists preference.
+- Footer: `⚠ no API key · /setup` or `N keys · /provider` when multi-key.
+- Bootstrap logs active provider + alternatives; `codeforge doctor` shows resolution.
+- Docs: [docs/ONBOARDING.md](./docs/ONBOARDING.md).
+
 ## [1.9.0] — 2026-07-16
 
 ### Public-ready gate (W4)

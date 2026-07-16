@@ -11,6 +11,7 @@ import (
 	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/git"
 	"github.com/codeforge/tui/internal/index"
+	"github.com/codeforge/tui/internal/onboarding"
 	"github.com/codeforge/tui/internal/pager"
 	"github.com/codeforge/tui/internal/personas"
 	"github.com/codeforge/tui/internal/plugin"
@@ -83,14 +84,23 @@ func Bootstrap(opt Options) (*Runtime, error) {
 	if _, err := provReg.Current(); err != nil {
 		_ = provReg.Register(provider.NewClaudeProvider("", "claude-sonnet-4-20250514"))
 	}
-	// Provider preference: explicit env keys win, then config default
-	switch {
-	case os.Getenv("XAI_API_KEY") != "" || os.Getenv("GROK_API_KEY") != "":
-		_ = provReg.Switch("grok")
-	case os.Getenv("GEMINI_API_KEY") != "":
-		_ = provReg.Switch("gemini")
-	case cfg.DefaultProvider != "":
-		_ = provReg.Switch(cfg.DefaultProvider)
+	// Multi-provider resolution (shared with wizard / /provider): preference → config → priority order
+	res := onboarding.ResolveActive(cfg)
+	if res.Provider != "" {
+		if err := provReg.Switch(res.Provider); err != nil {
+			// preferred not registered (e.g. ollama down) — leave whatever was registered
+			logf("Note: could not activate %s (%v) — %s\n", res.Provider, err, res.Reason)
+		} else {
+			if res.Model != "" {
+				if p, err := provReg.Current(); err == nil {
+					_ = p.SetModel(res.Model)
+				}
+			}
+			logf("✓ Active provider: %s (%s)\n", res.Provider, res.Reason)
+			if len(res.Alternatives) > 0 {
+				logf("  other keys: %v — switch with /provider\n", res.Alternatives)
+			}
+		}
 	}
 
 	ws := workspace.New(workdir)

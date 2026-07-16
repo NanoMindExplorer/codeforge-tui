@@ -37,6 +37,8 @@ type StatusBarModel struct {
 	Sandbox string // e.g. "SBX:ws" or empty
 	// W2 O3: true when no valid provider key — footer shows /setup hint
 	NeedSetup bool
+	// Multi-key hint: e.g. "2 keys" when several providers configured
+	KeyCount int
 }
 
 func NewStatusBarModel() StatusBarModel {
@@ -121,6 +123,8 @@ func (s StatusBarModel) ViewFooter() string {
 	setup := ""
 	if s.NeedSetup {
 		setup = lipgloss.NewStyle().Foreground(t.Danger).Bold(true).Render("⚠ no API key · /setup") + "  "
+	} else if s.KeyCount > 1 {
+		setup = lipgloss.NewStyle().Foreground(t.TextMuted).Render(fmt.Sprintf("%d keys · /provider", s.KeyCount)) + "  "
 	}
 	left := lipgloss.JoinHorizontal(lipgloss.Left, mode, " ", agent, "  ", model, "  ", setup, git)
 	right := lipgloss.JoinHorizontal(lipgloss.Right, todo, bg, sbx, spark, "  ", cost, "  ", themeN, "  ", clock)

@@ -58,6 +58,7 @@ func TestNeedsWizard(t *testing.T) {
 	for _, e := range []string{"XAI_API_KEY", "GROK_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"} {
 		t.Setenv(e, "")
 	}
+	_ = Save(State{})
 	if !NeedsWizard(false) {
 		t.Fatal("expected wizard when no keys")
 	}

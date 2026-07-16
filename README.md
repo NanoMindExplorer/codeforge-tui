@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go)](https://go.dev/)
-[![Version](https://img.shields.io/badge/version-v1.9.0-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
+[![Version](https://img.shields.io/badge/version-v1.9.1-22D3EE)](https://github.com/NanoMindExplorer/codeforge)
 
 | | |
 |---|---|
@@ -12,7 +12,7 @@
 | **Year** | 2026 |
 | **License** | Apache License 2.0 |
 | **Codename** | Neo-Forge |
-| **Version** | `v1.9.0` |
+| **Version** | `v1.9.1` |
 
 CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in your terminal: stream chat, call tools on your project, review file writes safely (Plan mode), and **integrate with GitHub** (PRs, issues, checks, push/pull — the same class of workflows modern AI coding agents use) — without leaving the keyboard.
 
@@ -20,7 +20,7 @@ CodeForge is a single-binary TUI that puts a multi-provider AI coding agent in y
 
 ## Grok 4.5 parity
 
-CodeForge **v1.9.0** is a **Grok Build TUI–compatible** coding agent with **Grok 4.5** (xAI) as a first-class model, full Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …), plus ACP for IDEs.
+CodeForge **v1.9.1** is a **Grok Build TUI–compatible** coding agent with **Grok 4.5** (xAI) as a first-class model, full Grok tool names (`web_search`, `run_terminal_command`, `spawn_subagent`, …), plus ACP for IDEs.
 
 **Dogfood status:** automated + live headless evidence is green (`make dogfood`); multi-day interactive TUI field program is in [docs/dogfood/PROGRAM.md](./docs/dogfood/PROGRAM.md) — full “1:1 daily driver” is not claimed until that program completes.
 
@@ -159,20 +159,24 @@ codeforge version
 
 Set **at least one** environment variable before a productive session.
 
-### Provider priority (O6)
+### Multi-provider auth (first-run)
 
-When several keys are set, bootstrap picks in this order:
+→ Full guide: **[docs/ONBOARDING.md](./docs/ONBOARDING.md)**
+
+Several API keys can be set at once; **only one provider is active**. Bootstrap order:
 
 | # | Condition | Active provider |
 |---|-----------|-----------------|
-| 1 | `XAI_API_KEY` or `GROK_API_KEY` | **grok** |
-| 2 | `GEMINI_API_KEY` | gemini |
-| 3 | `default_provider` in `~/.config/codeforge/config.yaml` | that name |
-| 4 | First registered (claude / openai / ollama) | varies |
+| 1 | Wizard / `/provider` preference (`onboarding.json`) | that name |
+| 2 | `default_provider` in config.yaml | that name |
+| 3 | First present key | **grok → gemini → claude → openai** |
 
-**Override:** `/provider grok|gemini|claude|openai|ollama`  
-**Inspect key source:** `/provider` (shows `env:…` / `config` / `missing`)  
-**Re-run setup:** `/setup`
+| Command | Purpose |
+|---------|---------|
+| `/setup` | Multi-provider status + add key |
+| `/provider` | Why active + every key source |
+| `/provider gemini` | Switch without re-pasting |
+| Footer `2 keys · /provider` | Multiple keys detected |
 
 | Provider | Environment | Notes |
 |----------|-------------|--------|

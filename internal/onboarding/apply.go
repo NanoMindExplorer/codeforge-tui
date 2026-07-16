@@ -11,14 +11,12 @@ import (
 
 // ApplyKey registers (or replaces) a provider with the given API key on the registry,
 // sets process env for the session, and persists key into config.yaml.
+// Also sets default_provider + onboarding preference so multi-key choice sticks.
 func ApplyKey(reg *provider.Registry, name, apiKey, model string) (provider.Provider, error) {
-	name = strings.ToLower(strings.TrimSpace(name))
+	name = normalizeName(name)
 	apiKey = strings.TrimSpace(apiKey)
 	if name == "" {
 		return nil, fmt.Errorf("provider name required")
-	}
-	if name == "xai" {
-		name = "grok"
 	}
 	if name == "ollama" {
 		p := provider.NewOllamaProvider(model)

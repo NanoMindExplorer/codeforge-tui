@@ -92,16 +92,19 @@ On first launch without a valid key, CodeForge shows the **setup wizard**
 
 Skip with `--skip-wizard` (or `/setup` later inside the TUI).
 
-### Key priority
+### Multi-provider (which key is active?)
+
+Full guide: **[docs/ONBOARDING.md](./docs/ONBOARDING.md)**
 
 | Priority | When |
 |----------|------|
-| 1 | `XAI_API_KEY` / `GROK_API_KEY` → **grok** |
-| 2 | `GEMINI_API_KEY` → gemini |
-| 3 | `config.yaml` `default_provider` |
-| 4 | Other registered providers (claude / openai / ollama) |
+| 1 | Onboarding preference (wizard or `/provider` / `/setup`) |
+| 2 | `config.yaml` `default_provider` |
+| 3 | First present: **grok → gemini → claude → openai** |
+| 4 | Ollama if selected |
 
-Override anytime: `/provider <name>`. Inspect sources: `/provider` (no args).
+Several keys can coexist; only one is active (footer).  
+Override: `/provider <name>` · inspect: `/provider` · add key: `/setup`.
 
 ### Headless / CI (O7)
 

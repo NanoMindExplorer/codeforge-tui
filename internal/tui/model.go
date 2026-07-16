@@ -24,6 +24,7 @@ import (
 	"github.com/codeforge/tui/internal/permission"
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/rules"
+	"github.com/codeforge/tui/internal/pager"
 	"github.com/codeforge/tui/internal/personas"
 	"github.com/codeforge/tui/internal/sandbox"
 	"github.com/codeforge/tui/internal/session"
@@ -982,7 +983,7 @@ func isImmediateSlash(cmd string) bool {
 		"/status", "/clear", "/quit", "/theme", "/compact-mode", "/vim-mode",
 		"/sessions", "/resume", "/new", "/fork", "/rewind", "/compact",
 		"/context", "/session-info", "/mode", "/plan", "/view-plan",
-		"/permissions", "/sandbox", "/hooks", "/todos", "/tasks", "/settings", "/copy",
+		"/permissions", "/sandbox", "/pager", "/hooks", "/todos", "/tasks", "/settings", "/copy",
 		"/memory", "/skills", "/personas", "/subagents", "/undo", "/push", "/pull":
 		return true
 	default:
@@ -2360,6 +2361,26 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 		}
 		m.chat.AddSystemMessage(m.hooks.Summary())
 
+	case "pager":
+		if len(args) > 0 && (strings.EqualFold(args[0], "reload") || strings.EqualFold(args[0], "refresh")) {
+			c := pager.ApplyFromWorkdir(m.workdir)
+			m.chat.AddSystemMessage("✓ Reloaded " + c.Summary())
+			m.toast = components.NewToast("pager reloaded", "success", 2*time.Second)
+			return nil
+		}
+		c := pager.Global()
+		src := c.Source
+		if src == "" {
+			src = "(defaults)"
+		}
+		lay := theme.CurrentLayout()
+		m.chat.AddSystemMessage(fmt.Sprintf(
+			"Pager config: %s\n  layout: vpad=%d hpad=%d/%d block_pad=%d/%d\n  scrollbar=%v sticky=%v thinking=%v bullet=%q fps=%d\n  invert_scroll=%v scroll_speed=%.2fx max_thoughts_w=%d\n\n  /pager reload  — rescan ~/.codeforge/pager.toml · .grok/pager.toml\n  See docs/PAGER.md",
+			src, lay.OuterVPad, lay.OuterHPadLeft, lay.OuterHPadRight, lay.BlockPadLeft, lay.BlockPadRight,
+			c.ScrollbarEnabled(), c.StickyHeaders(), c.ShowThinking(), c.ToolBulletChar(), c.AnimationFPS(),
+			c.InvertScroll(), c.ScrollSpeedMult(), c.MaxThoughtsWidth(),
+		))
+
 	case "sandbox", "sbx":
 		eng := sandbox.Global()
 		if len(args) == 0 {
@@ -3573,7 +3594,11 @@ func pumpAgent(ch <-chan agent.Event) tea.Cmd {
 }
 
 func spinnerTick() tea.Cmd {
-	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+	ms := theme.AnimationFrameMS()
+	if ms < 16 {
+		ms = 16
+	}
+	return tea.Tick(time.Duration(ms)*time.Millisecond, func(t time.Time) tea.Msg {
 		return SpinnerTickMsg{}
 	})
 }
@@ -3606,7 +3631,7 @@ var slashCommands = []string{
 	"/provider", "/model", "/mode", "/cost", "/budget", "/rules", "/index",
 	"/theme", "/compact-mode", "/vim-mode",
 	"/resume", "/new", "/fork", "/rewind", "/compact", "/context", "/session-info",
-	"/mode", "/plan", "/view-plan", "/permissions", "/sandbox", "/hooks",
+	"/mode", "/plan", "/view-plan", "/permissions", "/sandbox", "/pager", "/hooks",
 	"/todos", "/tasks", "/memory", "/skills", "/personas", "/subagents", "/settings", "/copy",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
@@ -3642,15 +3667,15 @@ AGENT / IDE
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.7.0
+	return `CodeForge TUI v1.8.0
 Created by NanoMind — 2026 — Apache 2.0
 
-Grok Build TUI–compatible (Phases 1–9 + G1–G8 + reasoning streams):
+Grok Build TUI–compatible (Phases 1–9 + G1–G9 + pager.toml):
   blocks · input · themes · sessions · design plan
   permissions/hooks · todos/tasks · ACP + x.ai/* extensions
-  Grok 4.5 · native thinking tokens · Landlock · skills · personas
-  background subagents · disk-persisted jobs · resume_from
-See docs/REASONING.md · docs/ACP.md · docs/SANDBOX.md
+  Grok 4.5 · native thinking · Landlock · skills · personas
+  pager.toml layout/scrollbar/blocks/animation · /pager
+See docs/PAGER.md · docs/REASONING.md · docs/ACP.md
 `
 }
 

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/codeforge/tui/internal/pager"
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/codeforge/tui/internal/ui/markdown"
 	"github.com/muesli/reflow/wordwrap"
@@ -17,8 +18,11 @@ func (s *Store) View() string {
 		return ""
 	}
 	t := theme.Current()
-	// sticky takes 1 row when present
-	sticky := s.StickyUserTitle()
+	// sticky takes 1 row when present (pager.toml sticky_headers)
+	sticky := ""
+	if pager.Global().StickyHeaders() {
+		sticky = s.StickyUserTitle()
+	}
 	vpH := s.height
 	if sticky != "" {
 		vpH--
@@ -43,8 +47,13 @@ func (s *Store) View() string {
 		vis = append(vis, "")
 	}
 
-	// scrollbar on right of content
-	body := s.withScrollbar(vis, total, vpH)
+	// scrollbar on right of content (pager.toml scrollbar.enabled)
+	var body string
+	if pager.Global().ScrollbarEnabled() {
+		body = s.withScrollbar(vis, total, vpH)
+	} else {
+		body = strings.Join(vis, "\n")
+	}
 
 	var out strings.Builder
 	if sticky != "" {
@@ -321,10 +330,15 @@ func headerColor(b Block, t theme.Tokens) lipgloss.Color {
 }
 
 func (s *Store) blockHeader(b Block) string {
+	pg := pager.Global()
 	fold := ""
 	if b.Foldable {
 		if b.Collapsed {
-			fold = "› "
+			ind := pg.ExpandableChar()
+			if ind == "" {
+				ind = "›"
+			}
+			fold = ind + " "
 		} else {
 			fold = "⌄ "
 		}
@@ -339,11 +353,21 @@ func (s *Store) blockHeader(b Block) string {
 		}
 		return fold + "▤ " + b.Title + m
 	case KindThinking:
+		if !pg.ShowThinking() {
+			return fold + "💭"
+		}
 		stream := ""
 		if b.Streaming {
 			stream = " …"
 		}
-		return fold + "💭 thinking" + stream
+		label := "thinking"
+		if !pg.ThinkingHeader() {
+			label = ""
+		}
+		if label == "" {
+			return fold + "💭" + stream
+		}
+		return fold + "💭 " + label + stream
 	case KindAssistant:
 		stream := ""
 		if b.Streaming {
@@ -353,7 +377,10 @@ func (s *Store) blockHeader(b Block) string {
 	case KindSystem:
 		return fold + "system"
 	case KindToolCall:
-		icon := theme.ToolIcon(b.Title)
+		icon := pg.ToolBulletChar()
+		if icon == "" {
+			icon = theme.ToolIcon(b.Title)
+		}
 		return fold + icon + " " + b.Title
 	case KindToolResult:
 		return fold + b.Title
@@ -367,11 +394,30 @@ func (s *Store) bodyLines(b Block, width int) []string {
 	if body == "" {
 		return nil
 	}
+	pg := pager.Global()
+	// hide thinking body entirely when disabled
+	if b.Kind == KindThinking && !pg.ShowThinking() {
+		return nil
+	}
+	// cap thinking width
+	if b.Kind == KindThinking {
+		mw := pg.MaxThoughtsWidth()
+		if mw > 0 && width > mw {
+			width = mw
+		}
+	}
 	var lines []string
 	switch b.Kind {
 	case KindAssistant, KindThinking:
 		out := markdown.Render(body, width)
 		lines = strings.Split(out, "\n")
+		// collapsed/truncated thinking lines when not streaming
+		if b.Kind == KindThinking && !b.Streaming && b.Collapsed {
+			n := pg.ThinkingTruncateLines()
+			if n > 0 && len(lines) > n {
+				lines = append(lines[:n], "…")
+			}
+		}
 	case KindToolCall:
 		// args preview
 		preview := strings.TrimSpace(body)

@@ -1,0 +1,32 @@
+# Example Grok-compatible pager.toml for CodeForge
+# Copy to ~/.codeforge/pager.toml or <project>/.codeforge/pager.toml
+
+[scrollback.layout]
+outer_vpad = 1
+outer_hpad_left = 2
+outer_hpad_right = 2
+block_pad_left = 2
+block_pad_right = 2
+
+[scrollback.scrollbar]
+enabled = true
+
+[scrollback.display]
+sticky_headers = true
+expandable_indicator_char = "›"
+
+[scrollback.blocks.tool]
+bullet = "diamond"
+
+[scrollback.blocks.thinking]
+header = true
+truncate_lines = 3
+
+[animation]
+fps = 30
+
+[ui]
+show_thinking_blocks = true
+max_thoughts_width = 120
+scroll_speed = 50
+invert_scroll = false

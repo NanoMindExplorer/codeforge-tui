@@ -124,6 +124,16 @@ Grok-compatible `SKILL.md` packages (reusable procedures).
 | ACP | `agent_thought_chunk` |
 | Docs | [REASONING.md](./REASONING.md) |
 
+## Phase G10 — pager.toml matrix ✅
+
+| Item | Detail |
+|------|--------|
+| Files | `~/.codeforge/pager.toml`, `~/.grok/pager.toml`, project variants, YAML |
+| Sections | layout, scrollbar, scroll, display, animation, blocks.*, prompt, todo, terminal, ui |
+| Slash | `/pager` · `/pager reload` |
+| Example | `examples/pager.toml` |
+| Docs | [PAGER.md](./PAGER.md) |
+
 ### Quick start
 
 ```bash

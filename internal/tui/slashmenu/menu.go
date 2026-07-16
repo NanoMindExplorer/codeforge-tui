@@ -50,6 +50,7 @@ func DefaultItems() []Item {
 		{"/view-plan", "Review design plan"},
 		{"/permissions", "Permission mode & rules"},
 		{"/sandbox", "OS sandbox profile (Grok-compatible)"},
+		{"/pager", "pager.toml status / reload"},
 		{"/hooks", "List loaded hooks"},
 		{"/todos", "Task list (footer badge)"},
 		{"/tasks", "Background shell jobs"},

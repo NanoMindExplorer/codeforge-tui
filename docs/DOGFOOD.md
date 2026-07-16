@@ -68,7 +68,6 @@ Use this side-by-side with Grok Build TUI for a day of real work. Mark each item
 ## Honest remaining gaps (Could)
 
 - Landlock/Seatbelt best-effort on restricted kernels/containers (see process=none in status)  
-- Full Grok welcome screen / pager.toml matrix — partial  
 - Grok.com billing/OAuth — out of scope  
 
 When this checklist stays green for **two weeks of daily use**, the v1.0 “Grok-compatible” claim is fair.

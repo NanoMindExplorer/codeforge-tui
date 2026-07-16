@@ -266,6 +266,40 @@ func Set(t Tokens) {
 	mu.Unlock()
 }
 
+// SetTokens is an alias for Set (pager color overrides).
+func SetTokens(t Tokens) { Set(t) }
+
+var animationFPS = 30
+
+// SetAnimationFPS sets border/spinner animation rate (1–60, Grok [animation].fps).
+func SetAnimationFPS(fps int) {
+	if fps < 1 {
+		fps = 1
+	}
+	if fps > 60 {
+		fps = 60
+	}
+	mu.Lock()
+	animationFPS = fps
+	mu.Unlock()
+}
+
+// AnimationFPS returns configured FPS.
+func AnimationFPS() int {
+	mu.RLock()
+	defer mu.RUnlock()
+	return animationFPS
+}
+
+// AnimationFrameMS is milliseconds per animation frame.
+func AnimationFrameMS() int {
+	fps := AnimationFPS()
+	if fps < 1 {
+		fps = 30
+	}
+	return 1000 / fps
+}
+
 // SetRaw sets tokens without clearing auto mode (used by auto resolve).
 func setRaw(t Tokens) {
 	current = QuantizeTokens(t)

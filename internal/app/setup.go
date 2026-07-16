@@ -15,6 +15,7 @@ import (
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/research"
 	"github.com/codeforge/tui/internal/rules"
+	"github.com/codeforge/tui/internal/pager"
 	"github.com/codeforge/tui/internal/personas"
 	"github.com/codeforge/tui/internal/sandbox"
 	"github.com/codeforge/tui/internal/skills"
@@ -104,6 +105,22 @@ func Bootstrap(opt Options) (*Runtime, error) {
 		ws.SetIgnoreDirs(cfg.Workspace.IgnoreDirs)
 	}
 	workspace.SetGlobal(ws)
+
+	// Grok pager.toml / pager.yaml (layout, scrollbar, blocks, animation, ui knobs)
+	pg := pager.ApplyFromWorkdir(workdir)
+	// Overlay config.yaml [ui] knobs into pager when set
+	pg = pager.MergeConfigUI(pg, cfg)
+	pager.Apply(pg)
+	if pg.Source != "" {
+		logf("✓ %s\n", pg.Summary())
+	}
+	// Apply UI knobs from pager into config-ish flags
+	if pg.UI.VimMode != nil {
+		cfg.UI.VimMode = *pg.UI.VimMode
+	}
+	if pg.UI.CompactMode != nil {
+		cfg.UI.CompactMode = *pg.UI.CompactMode
+	}
 
 	// Phase G4: Grok-compatible shell sandbox
 	prof := sandbox.ResolvePreferExplicit(opt.SandboxFlagSet, opt.Sandbox, cfg.Sandbox.Profile)

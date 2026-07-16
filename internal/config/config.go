@@ -76,7 +76,7 @@ type SessionConfig struct {
     AutoCompactPct float64 `mapstructure:"auto_compact_pct"`
 }
 
-// UIConfig matches Grok [ui] knobs used by CodeForge.
+// UIConfig matches Grok [ui] knobs used by CodeForge (+ pager.toml [ui]).
 type UIConfig struct {
     // VimMode enables j/k/h/l/g/G single-letter scrollback bindings (Grok vim_mode).
     VimMode     bool `mapstructure:"vim_mode"`
@@ -86,6 +86,24 @@ type UIConfig struct {
     // AutoDarkTheme / AutoLightTheme map system appearance when theme=auto.
     AutoDarkTheme  string `mapstructure:"auto_dark_theme"`
     AutoLightTheme string `mapstructure:"auto_light_theme"`
+    // SimpleMode: true = readline prompt (default), false = experimental vim prompt.
+    SimpleMode *bool `mapstructure:"simple_mode"`
+    // ShowThinkingBlocks controls thinking/reasoning blocks in scrollback.
+    ShowThinkingBlocks *bool `mapstructure:"show_thinking_blocks"`
+    // MaxThoughtsWidth caps reasoning column width.
+    MaxThoughtsWidth *int `mapstructure:"max_thoughts_width"`
+    // GroupToolVerbs folds consecutive read/search tool rows.
+    GroupToolVerbs *bool `mapstructure:"group_tool_verbs"`
+    // ScreenMode: minimal | fullscreen
+    ScreenMode string `mapstructure:"screen_mode"`
+    // Scroll knobs (also in pager.toml)
+    ScrollSpeed  *int   `mapstructure:"scroll_speed"`
+    ScrollMode   string `mapstructure:"scroll_mode"`
+    ScrollLines  *int   `mapstructure:"scroll_lines"`
+    InvertScroll *bool  `mapstructure:"invert_scroll"`
+    // DefaultSelectedPermission: always_allow_all_sessions | allow_command_always | allow_once | reject
+    DefaultSelectedPermission string `mapstructure:"default_selected_permission"`
+    RememberToolApprovals     *bool  `mapstructure:"remember_tool_approvals"`
 }
 
 // PluginsConfig lists extra plugin search directories.

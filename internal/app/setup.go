@@ -16,6 +16,7 @@ import (
 	"github.com/codeforge/tui/internal/research"
 	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/sandbox"
+	"github.com/codeforge/tui/internal/skills"
 	"github.com/codeforge/tui/internal/telemetry"
 	"github.com/codeforge/tui/internal/tool"
 	"github.com/codeforge/tui/internal/workspace"
@@ -127,6 +128,19 @@ func Bootstrap(opt Options) (*Runtime, error) {
 	rb := rules.Load(workdir, extra...)
 	if len(rb.Paths) > 0 {
 		logf("✓ %s\n", rb.Summary())
+	}
+
+	// Phase G5: Grok-compatible skills
+	skReg := skills.Load(skills.Options{
+		WorkDir:      workdir,
+		ExtraPaths:   cfg.Skills.Paths,
+		Ignore:       cfg.Skills.Ignore,
+		Disabled:     cfg.Skills.Disabled,
+		CompatClaude: cfg.SkillsCompatClaude(),
+		CompatCursor: cfg.SkillsCompatCursor(),
+	})
+	if skReg.Count() > 0 {
+		logf("✓ %s\n", skReg.Summary())
 	}
 
 	if !opt.SkipIndex {

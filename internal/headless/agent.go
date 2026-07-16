@@ -16,6 +16,7 @@ import (
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/session"
+	"github.com/codeforge/tui/internal/skills"
 )
 
 // Options for a headless agent run.
@@ -111,6 +112,7 @@ func Run(opt Options, w io.Writer) (Result, error) {
 Prefer search_replace/apply_patch over full rewrites. Run diagnostics after edits.
 Reply with a clear summary of what you did.`
 	sys = rules.Inject(sys, rt.Rules)
+	sys = skills.Global().InjectCatalog(sys)
 	if opt.SystemExtra != "" {
 		sys += "\n\n" + opt.SystemExtra
 	}

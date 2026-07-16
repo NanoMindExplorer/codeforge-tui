@@ -13,6 +13,7 @@ import (
 	"github.com/codeforge/tui/internal/git"
 	"github.com/codeforge/tui/internal/provider"
 	"github.com/codeforge/tui/internal/rules"
+	"github.com/codeforge/tui/internal/skills"
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/codeforge/tui/internal/tool"
 	"github.com/codeforge/tui/internal/tui/blocks"
@@ -131,10 +132,13 @@ func (c *ChatModel) AttachFile(rel, content string) {
 func (c *ChatModel) SetRules(text string) { c.rulesText = text }
 
 func (c *ChatModel) systemWithRules(base string) string {
-	if c.rulesText == "" {
-		return base
+	sys := base
+	if c.rulesText != "" {
+		sys = rules.Inject(sys, &rules.Bundle{Text: c.rulesText})
 	}
-	return rules.Inject(base, &rules.Bundle{Text: c.rulesText})
+	// Phase G5: skill catalog so the model can match tasks to skills
+	sys = skills.Global().InjectCatalog(sys)
+	return sys
 }
 
 // Submit streaming chat.
@@ -609,6 +613,7 @@ TOOLS (Grok-compatible names preferred):
 - Tasks: todo_write; spawn_subagent (mode explore|general); research
 - Plan: enter_plan_mode, write_plan, exit_plan_mode, ask_user_question|ask_user
 - Verify: diagnostics · GitHub: github · MCP: mcp_*
+- Skills: when a listed skill matches the task, follow its procedure (or user runs /skill-name)
 
 SESSION MODES (Shift+Tab):
 - BUILD: writes STAGED for review

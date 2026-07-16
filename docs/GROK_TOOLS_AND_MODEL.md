@@ -65,6 +65,20 @@ Grok-compatible profiles: `off` · `workspace` · `read-only` · `strict` · `de
 | Tools | soft `CheckWrite` / `CheckRead` on file tools |
 | Docs | [SANDBOX.md](./SANDBOX.md) |
 
+## Phase G5 — Skills ✅
+
+Grok-compatible `SKILL.md` packages (reusable procedures).
+
+| Item | Detail |
+|------|--------|
+| Discovery | `.codeforge/skills`, `.grok/skills`, `~/.codeforge/skills`, Claude/Cursor compat |
+| Format | YAML frontmatter + markdown body |
+| Slash | `/skills` · `/name` · `/skill:name` |
+| Prompt | Catalog injected into agent + headless system prompt |
+| Config | `skills.paths` / `ignore` / `disabled` / compat flags |
+| Docs | [SKILLS.md](./SKILLS.md) |
+| Example | `examples/skills/commit/SKILL.md` |
+
 ### Quick start
 
 ```bash

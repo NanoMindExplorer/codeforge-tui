@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/codeforge/tui/internal/skills"
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/sahilm/fuzzy"
 )
@@ -53,6 +54,7 @@ func DefaultItems() []Item {
 		{"/todos", "Task list (footer badge)"},
 		{"/tasks", "Background shell jobs"},
 		{"/memory", "Cross-session notes (list/add/search)"},
+		{"/skills", "List / invoke Grok-compatible skills"},
 		{"/settings", "UI settings panel"},
 		{"/copy", "Copy selected block"},
 		{"/cost", "Session token cost"},
@@ -79,7 +81,47 @@ func DefaultItems() []Item {
 }
 
 func New() Model {
-	return Model{Items: DefaultItems()}
+	return Model{Items: WithSkills(DefaultItems())}
+}
+
+// WithSkills appends user-invocable skills as slash entries.
+func WithSkills(base []Item) []Item {
+	reg := skills.Global()
+	seen := map[string]bool{}
+	for _, it := range base {
+		seen[it.Command] = true
+	}
+	out := append([]Item{}, base...)
+	for _, sk := range reg.List() {
+		if sk.Disabled || !sk.UserInvocable {
+			continue
+		}
+		cmd := "/" + sk.Name
+		if seen[cmd] {
+			// collision with built-in — qualify as /skill:name
+			cmd = "/skill:" + sk.Name
+			if seen[cmd] {
+				continue
+			}
+		}
+		seen[cmd] = true
+		desc := sk.Description
+		if desc == "" {
+			desc = "skill [" + string(sk.Source) + "]"
+		} else if len(desc) > 48 {
+			desc = desc[:45] + "…"
+		}
+		out = append(out, Item{Command: cmd, Desc: "skill · " + desc})
+	}
+	return out
+}
+
+// RefreshSkills rebuilds the item list from defaults + current skill registry.
+func (m *Model) RefreshSkills() {
+	m.Items = WithSkills(DefaultItems())
+	if m.Active {
+		m.refilter()
+	}
 }
 
 // UpdateQuery refreshes filter from full prompt text.

@@ -26,6 +26,7 @@ import (
 	"github.com/codeforge/tui/internal/rules"
 	"github.com/codeforge/tui/internal/sandbox"
 	"github.com/codeforge/tui/internal/session"
+	"github.com/codeforge/tui/internal/skills"
 	"github.com/codeforge/tui/internal/theme"
 	"github.com/codeforge/tui/internal/todos"
 	"github.com/codeforge/tui/internal/tool"
@@ -980,7 +981,7 @@ func isImmediateSlash(cmd string) bool {
 		"/sessions", "/resume", "/new", "/fork", "/rewind", "/compact",
 		"/context", "/session-info", "/mode", "/plan", "/view-plan",
 		"/permissions", "/sandbox", "/hooks", "/todos", "/tasks", "/settings", "/copy",
-		"/memory", "/undo", "/push", "/pull":
+		"/memory", "/skills", "/undo", "/push", "/pull":
 		return true
 	default:
 		return false
@@ -2412,6 +2413,40 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 			m.chat.AddSystemMessage("Usage: /todos [add|done|progress|clear]")
 		}
 
+	case "skills", "skill":
+		// /skills [list|reload|<name>]
+		if len(args) == 0 || strings.EqualFold(args[0], "list") || strings.EqualFold(args[0], "ls") {
+			m.chat.AddSystemMessage(skills.Global().RenderList())
+			return nil
+		}
+		if strings.EqualFold(args[0], "reload") || strings.EqualFold(args[0], "refresh") {
+			opt := skills.Options{WorkDir: m.workdir, CompatClaude: true, CompatCursor: true}
+			if m.cfg != nil {
+				opt.ExtraPaths = m.cfg.Skills.Paths
+				opt.Ignore = m.cfg.Skills.Ignore
+				opt.Disabled = m.cfg.Skills.Disabled
+				opt.CompatClaude = m.cfg.SkillsCompatClaude()
+				opt.CompatCursor = m.cfg.SkillsCompatCursor()
+			}
+			reg := skills.Load(opt)
+			m.slash.RefreshSkills()
+			m.chat.AddSystemMessage("✓ Reloaded " + reg.Summary())
+			m.toast = components.NewToast(reg.Summary(), "info", 2*time.Second)
+			return nil
+		}
+		// show one skill
+		name := args[0]
+		if sk, ok := skills.Global().Get(name); ok {
+			body := sk.Body
+			if len(body) > 3000 {
+				body = body[:3000] + "\n… (truncated)"
+			}
+			m.chat.AddSystemMessage(fmt.Sprintf("Skill /%s [%s]\n%s\n\n%s\n\nRun: /%s [args]",
+				sk.Name, sk.Source, sk.Description, body, sk.Name))
+			return nil
+		}
+		m.chat.AddSystemMessage("Unknown skill: " + name + "\nUse /skills to list.")
+
 	case "memory", "mem":
 		// /memory [list|add <text>|search <query>]
 		if len(args) == 0 {
@@ -2916,6 +2951,23 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 		return tea.Quit
 
 	default:
+		// Phase G5: skill slash invoke (/name or /skill:name)
+		skillName := cmd
+		if strings.HasPrefix(cmd, "skill:") {
+			skillName = strings.TrimPrefix(cmd, "skill:")
+		}
+		if sk, ok := skills.Global().Get(skillName); ok {
+			if sk.Disabled {
+				m.chat.AddSystemMessage("Skill disabled: " + skillName)
+				return nil
+			}
+			if !sk.UserInvocable {
+				m.chat.AddSystemMessage("Skill not user-invocable: " + skillName)
+				return nil
+			}
+			m.toast = components.NewToast("Skill /"+sk.Name, "info", 2*time.Second)
+			return m.chat.SubmitAgent(sk.InvokePrompt(argStr))
+		}
 		return m.chat.SubmitAgent(input)
 	}
 	return nil
@@ -3473,7 +3525,7 @@ var slashCommands = []string{
 	"/theme", "/compact-mode", "/vim-mode",
 	"/resume", "/new", "/fork", "/rewind", "/compact", "/context", "/session-info",
 	"/mode", "/plan", "/view-plan", "/permissions", "/sandbox", "/hooks",
-	"/todos", "/tasks", "/memory", "/settings", "/copy",
+	"/todos", "/tasks", "/memory", "/skills", "/settings", "/copy",
 	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
 }
 
@@ -3487,7 +3539,7 @@ func autocomplete(input string) string {
 }
 
 func helpText() string {
-	return `CodeForge · Grok 4.5 parity  ·  Phases 1–9 + G1–G4
+	return `CodeForge · Grok 4.5 parity  ·  Phases 1–9 + G1–G5
 
 SCROLLBACK
   Enter · y/Y · j/k · fold · G follow-tail
@@ -3497,28 +3549,28 @@ MODES
 
 PRODUCT
   /resume /new /fork /rewind /compact /context
-  /plan /view-plan /todos /tasks /memory /settings /copy
+  /plan /view-plan /todos /tasks /memory /skills /settings /copy
   /theme /permissions /sandbox /hooks /vim-mode /compact-mode
 
 AGENT / IDE
   codeforge agent … | agent stdio | agent serve
   Grok tools: web_search, glob, memory_*, spawn_subagent, ask_user_question
-  Sandbox: --sandbox workspace|read-only|strict  ·  /sandbox
-  See docs/ACP.md · docs/SANDBOX.md · docs/GROK_TOOLS_AND_MODEL.md
+  Skills: /skills · /skill-name  ·  Sandbox: /sandbox
+  See docs/SKILLS.md · docs/SANDBOX.md · docs/GROK_TOOLS_AND_MODEL.md
 `
 }
 
 func aboutText() string {
-	return `CodeForge TUI v1.2.0
+	return `CodeForge TUI v1.3.0
 Created by NanoMind — 2026 — Apache 2.0
 
-Grok Build TUI–compatible (Phases 1–9 + G1–G4):
+Grok Build TUI–compatible (Phases 1–9 + G1–G5):
   blocks · input · themes · sessions · design plan
   permissions/hooks · todos/tasks · ACP IDE bridge
   Grok 4.5 model · full Grok tool surface + /memory
-  OS sandbox profiles (workspace/read-only/strict) + soft/bwrap
-Honest gaps: full Landlock/Seatbelt process-wide, full x.ai/* ACP.
-See docs/GROK_PARITY_ROADMAP.md · docs/SANDBOX.md
+  OS sandbox profiles · Skills (SKILL.md packages)
+Honest gaps: process-wide Landlock, full x.ai/* ACP.
+See docs/GROK_PARITY_ROADMAP.md · docs/SKILLS.md · docs/SANDBOX.md
 `
 }
 

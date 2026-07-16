@@ -25,6 +25,8 @@ type Config struct {
     Session         SessionConfig       `mapstructure:"session"`
     // Sandbox is Grok-compatible OS shell sandbox (Phase G4).
     Sandbox         SandboxConfig       `mapstructure:"sandbox"`
+    // Skills is Grok-compatible SKILL.md packages (Phase G5).
+    Skills          SkillsConfig        `mapstructure:"skills"`
 }
 
 // SandboxConfig selects a profile: off | workspace | read-only | strict | devbox.
@@ -33,6 +35,20 @@ type SandboxConfig struct {
     Profile string `mapstructure:"profile"`
     // Deny extra paths/globs blocked for read+write (soft always; bwrap when available).
     Deny []string `mapstructure:"deny"`
+}
+
+// SkillsConfig discovers reusable SKILL.md packages (Grok-compatible).
+type SkillsConfig struct {
+    // Paths additional skill roots (files or directories).
+    Paths []string `mapstructure:"paths"`
+    // Ignore path prefixes to skip entirely.
+    Ignore []string `mapstructure:"ignore"`
+    // Disabled skill names (listed but not injected / not invocable).
+    Disabled []string `mapstructure:"disabled"`
+    // CompatClaude scan .claude/skills (default true).
+    CompatClaude *bool `mapstructure:"compat_claude"`
+    // CompatCursor scan .cursor/skills (default true).
+    CompatCursor *bool `mapstructure:"compat_cursor"`
 }
 
 // SessionConfig controls session lifecycle (Phase 4).
@@ -229,7 +245,28 @@ func Default() *Config {
             Profile: "off",
             Deny:    nil,
         },
+        Skills: SkillsConfig{
+            Paths:    nil,
+            Ignore:   nil,
+            Disabled: nil,
+        },
     }
+}
+
+// SkillsCompatClaude returns whether Claude skill dirs are scanned (default true).
+func (c *Config) SkillsCompatClaude() bool {
+    if c == nil || c.Skills.CompatClaude == nil {
+        return true
+    }
+    return *c.Skills.CompatClaude
+}
+
+// SkillsCompatCursor returns whether Cursor skill dirs are scanned (default true).
+func (c *Config) SkillsCompatCursor() bool {
+    if c == nil || c.Skills.CompatCursor == nil {
+        return true
+    }
+    return *c.Skills.CompatCursor
 }
 
 func ConfigDir() (string, error) {

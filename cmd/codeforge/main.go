@@ -15,6 +15,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/codeforge/tui/internal/acp"
 	"github.com/codeforge/tui/internal/app"
 	"github.com/codeforge/tui/internal/config"
 	"github.com/codeforge/tui/internal/headless"
@@ -25,7 +26,7 @@ import (
 
 const (
 	ProjectName    = "CodeForge TUI"
-	ProjectVersion = "0.9.6"
+	ProjectVersion = "0.9.7"
 	ProjectAuthor  = "NanoMind"
 	ProjectYear    = "2026"
 	ProjectLicense = "Apache 2.0"
@@ -153,6 +154,12 @@ func runTUI(args []string) {
 }
 
 func runAgentCLI(args []string) int {
+	// Shared flags for agent modes (before subcommand or task)
+	acpOpt := acp.Options{
+		Version: ProjectVersion,
+		Quiet:   true,
+		MaxIter: 12,
+	}
 	opt := headless.Options{
 		JSON:    false,
 		Act:     true,
@@ -160,15 +167,24 @@ func runAgentCLI(args []string) int {
 		MaxIter: 12,
 	}
 	var taskParts []string
+	mode := "" // "", "stdio", "serve"
+	bind := "127.0.0.1:2419"
+	secret := ""
+
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch a {
+		case "stdio":
+			mode = "stdio"
+		case "serve":
+			mode = "serve"
 		case "--json", "-j":
 			opt.JSON = true
 			opt.Quiet = true
 		case "--plan":
 			opt.Plan = true
 			opt.Act = false
+			acpOpt.Plan = true
 		case "--act":
 			opt.Act = true
 			opt.Plan = false
@@ -176,12 +192,15 @@ func runAgentCLI(args []string) int {
 			opt.AlwaysApprove = true
 			opt.Act = true
 			opt.Plan = false
+			acpOpt.AlwaysApprove = true
 		case "--dont-ask":
 			opt.DontAsk = true
+			acpOpt.DontAsk = true
 		case "--model", "-m":
 			if i+1 < len(args) {
 				i++
 				opt.Model = args[i]
+				acpOpt.Model = args[i]
 			}
 		case "--quiet", "-q":
 			opt.Quiet = true
@@ -189,6 +208,7 @@ func runAgentCLI(args []string) int {
 			if i+1 < len(args) {
 				i++
 				opt.WorkDir = args[i]
+				acpOpt.WorkDir = args[i]
 			}
 		case "--timeout":
 			if i+1 < len(args) {
@@ -201,6 +221,17 @@ func runAgentCLI(args []string) int {
 			if i+1 < len(args) {
 				i++
 				opt.MaxIter, _ = strconv.Atoi(args[i])
+				acpOpt.MaxIter = opt.MaxIter
+			}
+		case "--bind":
+			if i+1 < len(args) {
+				i++
+				bind = args[i]
+			}
+		case "--secret":
+			if i+1 < len(args) {
+				i++
+				secret = args[i]
 			}
 		case "--help", "-h":
 			fmt.Print(agentUsage())
@@ -213,6 +244,39 @@ func runAgentCLI(args []string) int {
 			taskParts = append(taskParts, a)
 		}
 	}
+
+	// ACP stdio / serve (Phase 8)
+	if mode == "stdio" {
+		if acpOpt.WorkDir == "" {
+			acpOpt.WorkDir, _ = os.Getwd()
+		}
+		// Default always-approve for IDE unless dont-ask
+		if !acpOpt.DontAsk && !acpOpt.Plan {
+			acpOpt.AlwaysApprove = true
+		}
+		srv := acp.NewServer(acpOpt)
+		if err := acp.ServeStdio(srv, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "acp stdio: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	if mode == "serve" {
+		if acpOpt.WorkDir == "" {
+			acpOpt.WorkDir, _ = os.Getwd()
+		}
+		if !acpOpt.DontAsk && !acpOpt.Plan {
+			acpOpt.AlwaysApprove = true
+		}
+		if err := acp.ServeWebSocket(acp.ServeOptions{
+			Bind: bind, Secret: secret, ACP: acpOpt,
+		}); err != nil {
+			fmt.Fprintf(os.Stderr, "acp serve: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+
 	opt.Task = strings.Join(taskParts, " ")
 	if opt.Task == "" {
 		st, _ := os.Stdin.Stat()
@@ -349,6 +413,8 @@ func printUsage() {
 Usage:
   codeforge [workdir] [flags]           Interactive TUI
   codeforge agent [flags] <task>        Headless agent (CI/scripts)
+  codeforge agent stdio                 ACP JSON-RPC for IDEs
+  codeforge agent serve                 ACP WebSocket server
   codeforge session <cmd>               Export / import sessions
   codeforge version
 
@@ -378,21 +444,31 @@ Env:
 }
 
 func agentUsage() string {
-	return `Agent (headless):
-  codeforge agent [flags] <task>
-  codeforge agent --json "run go test and fix failures"
-  echo "summarize README" | codeforge agent --json
+	return `Agent:
+  codeforge agent [flags] <task>           One-shot headless run
+  codeforge agent [flags] stdio            ACP JSON-RPC over stdin/stdout (IDE)
+  codeforge agent [flags] serve            ACP over WebSocket
 
+  codeforge agent --json "run go test and fix failures"
+  codeforge agent --model gemini-2.5-flash --always-approve stdio
+  codeforge agent serve --bind 127.0.0.1:2419 --secret tok
+
+Flags:
   --json, -j       Machine-readable JSON result (exit 1 on failure)
   --plan           Design/plan permission mode + staged writes
-  --act            Apply writes immediately (default)
+  --act            Apply writes immediately (default for one-shot)
   --always-approve, --yolo  Bypass ask (deny rules still apply)
   --dont-ask       Deny anything that would prompt (CI lockdown)
   --model, -m      Model id for current provider
   --workdir, -C    Project directory
-  --timeout SEC    Overall timeout (default 600)
+  --timeout SEC    One-shot timeout (default 600)
   --max-iter N     Agent iterations (default 12)
   --quiet, -q      Less human chatter
+  --bind ADDR      serve bind (default 127.0.0.1:2419)
+  --secret TOKEN   serve auth (or CODEFORGE_AGENT_SECRET)
+
+ACP methods: initialize, session/new, session/load, session/prompt, session/cancel
+See docs/ACP.md
 `
 }
 

@@ -2,10 +2,10 @@
 
 **Goal:** Make CodeForge feel and behave **1:1** with Grok Build TUI (Grok 4.5 class) in layout, interaction, session lifecycle, permissions, and agent surface — without becoming a closed fork of proprietary code.
 
-**Current baseline:** CodeForge **v0.9.6**  
-- Phase 1–7 shipped: blocks, input, themes, sessions, plan, permissions, product surface  
+**Current baseline:** CodeForge **v0.9.7**  
+- Phase 1–8 shipped: TUI parity slices + ACP stdio/WebSocket  
 - GitHub, plugins, headless agent, rules, index, MCP  
-- **Not** full Grok parity yet (ACP, OS sandbox, …)
+- **Not** full Grok parity yet (OS sandbox, dogfood polish, …)
 
 **Reference:** Grok user-guide docs (`~/.grok/docs/user-guide/`) — theming, shortcuts, sessions, plan mode, permissions, agent ACP.
 
@@ -41,7 +41,7 @@ Phases are **sequential** where later ones depend on earlier UI foundations. Som
 | Permissions | allow/deny/ask + modes + hooks | ✅ Phase 6 | Small |
 | TODOs | Task badges in footer | ✅ Phase 7 | — |
 | Thinking | Animated reasoning blocks | Spinner only | Medium |
-| ACP / IDE | `grok agent stdio` / serve | Headless `agent --json` only | **Large** |
+| ACP / IDE | `grok agent stdio` / serve | ✅ Phase 8 stdio + WebSocket | Small |
 | Sandbox | OS sandbox for shell | Path sandbox only | Large |
 | Compact / minimal | Full + compact + minimal | ✅ Phase 3 | — |
 
@@ -264,8 +264,11 @@ diff blocks, Enter viewer, y/Y copy, bg shell, `--model`.
 4. Map ACP permissions to Phase 6 engine  
 
 ### Exit criteria
-- [ ] Minimal ACP client can run a turn and show tools  
-- [ ] CI test with scripted stdio client  
+- [x] Minimal ACP client can run a turn and show tools  
+- [x] CI test with scripted stdio client  
+
+**Shipped in v0.9.7** — `codeforge agent stdio` / `serve`, JSON-RPC subset,
+permissions mapped, `docs/ACP.md`, `internal/acp` tests with fake runner.
 
 ---
 

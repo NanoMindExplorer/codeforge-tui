@@ -39,8 +39,12 @@ type Runtime struct {
 
 // Options controls bootstrap behaviour.
 type Options struct {
-	WorkDir     string
-	Quiet       bool
+	WorkDir string
+	Quiet   bool
+	// SkipIndex skips codebase index build (Q3.4). Headless/ACP default true;
+	// interactive TUI leaves this false so search tools see a fresh index.
+	// Override at runtime with CODEFORGE_INDEX=1 (force index) when SkipIndex
+	// would otherwise be true — callers check env themselves, or set SkipIndex.
 	SkipIndex   bool
 	SkipMCP     bool
 	SkipPlugins bool
@@ -67,6 +71,10 @@ func Bootstrap(opt Options) (*Runtime, error) {
 
 	cfg, err := config.Load()
 	if err != nil {
+		// Schema errors should be visible; still boot with defaults so --help-like paths work.
+		if !opt.Quiet {
+			fmt.Fprintf(os.Stderr, "Warning: config: %v\n  → using defaults; fix ~/.config/codeforge/config.yaml\n", err)
+		}
 		cfg = config.Default()
 	}
 	_ = config.SaveExample()
@@ -76,6 +84,11 @@ func Bootstrap(opt Options) (*Runtime, error) {
 			return
 		}
 		fmt.Fprintf(os.Stderr, format, args...)
+	}
+
+	// Force index when ops set CODEFORGE_INDEX=1 even if caller skipped.
+	if os.Getenv("CODEFORGE_INDEX") == "1" {
+		opt.SkipIndex = false
 	}
 
 	provReg := provider.NewRegistry()

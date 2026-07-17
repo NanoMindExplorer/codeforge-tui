@@ -6,7 +6,8 @@
 
 **Q0 status:** implemented — race job, coverage floor (`scripts/coverage-floor.txt` = 34%), offline dogfood CI, govulncheck (warn), claim language links.  
 **Q1 status:** implemented — agent unit tests (~88%), LoopError, rate-limit retry, redact, headless codes.  
-**Q2 status:** implemented — TUI orchestrator split; `model.go` **~638 LOC** (from ~3.8k); keys/stream/session/slash files + `AppServices` + unit tests.
+**Q2 status:** implemented — TUI orchestrator split; `model.go` **~638 LOC** (from ~3.8k); keys/stream/session/slash files + `AppServices` + unit tests.  
+**Q3 status:** implemented — non-destructive config merge (0600), secrets policy (env → keyring/file → yaml), schema validation, headless SkipIndex default, `app`/`config` tests, [SECRETS.md](./SECRETS.md).
 
 This document is the single source of truth for **what the codebase is today**, **what hurts**, and **how to improve it in ordered phases**.
 
@@ -118,8 +119,8 @@ Severity: **P0** ship-blocker · **P1** high · **P2** medium · **P3** nice-to-
 
 | ID | Sev | Finding | Impact |
 |----|-----|---------|--------|
-| S1 | **P1** | API keys stored **plaintext** in `~/.config/codeforge/config.yaml` via `SaveProviderKey` | Disk compromise = key theft |
-| S2 | **P1** | Config write merges via Viper may **rewrite/partially drop** unrelated keys if not fully loaded | Silent config loss risk |
+| S1 | **P1** → **mitigated (Q3)** | Keys prefer env; optional file keystore / OS keyring; yaml keys discouraged | See `docs/SECRETS.md` |
+| S2 | **P1** → **mitigated (Q3)** | Config writes use YAML map merge (preserve unknown keys) + mode 0600 | Round-trip tests in `config_test.go` |
 | S3 | **P2** | YOLO / `--always-approve` is powerful; UX must keep **deny rules** highly visible | User over-trust |
 | S4 | **P2** | Shell tool still executes user/model-driven commands; soft sandbox default often `off` | Workspace escape depends on profile |
 | S5 | **P2** | Redact package exists but not applied on **all** tool outputs / error raw paths | Occasional secret leakage to model |
@@ -282,16 +283,16 @@ Implemented as same-package file split (zero behavior change; methods stay on `M
 
 ---
 
-### Phase Q3 — Config, secrets, bootstrap (1–1.5 weeks) **P1 security**
+### Phase Q3 — Config, secrets, bootstrap (1–1.5 weeks) **P1 security** ✅ **DONE**
 
-| # | Work item | Detail | DoD |
-|---|-----------|--------|-----|
-| Q3.1 | **Non-destructive config write** | Load full file → merge → write; preserve unknown keys/comments if possible (or yaml node merge) | Round-trip test |
-| Q3.2 | **Key storage policy** | Prefer env; config key optional; document risk; chmod 0600 on config | File mode test |
-| Q3.3 | **Optional OS keyring** (Could) | Store API keys in keyring when available | Feature flag |
-| Q3.4 | **Bootstrap options** | `SkipIndex` default true for headless unless needed; faster agent | Bench or timing test |
-| Q3.5 | **Config schema validation** | Reject unknown sandbox profiles / invalid modes early | Clear error |
-| Q3.6 | **app package tests** | Bootstrap with temp HOME + fake keys registration | No network |
+| # | Work item | Detail | DoD | Status |
+|---|-----------|--------|-----|--------|
+| Q3.1 | **Non-destructive config write** | YAML map merge + atomic write; preserve unknown keys | Round-trip test | ✅ `mergeWriteYAML` / `config_test.go` |
+| Q3.2 | **Key storage policy** | Prefer env; optional keys; **chmod 0600**; docs | File mode test | ✅ `SECRETS.md` + mode tests |
+| Q3.3 | **Optional OS keyring** | `secrets.backend` auto/file/keyring/env_only + go-keyring | Feature flag | ✅ `CODEFORGE_SECRETS_BACKEND` / `NO_KEYRING` |
+| Q3.4 | **Bootstrap options** | Headless/ACP `SkipIndex` default true; `CODEFORGE_INDEX=1` force | Timing smoke | ✅ headless + app tests |
+| Q3.5 | **Config schema validation** | sandbox / permissions.mode / budget / diff_mode | Clear error | ✅ `Validate` + Load |
+| Q3.6 | **app package tests** | Bootstrap temp `CODEFORGE_CONFIG_DIR` + env keys | No network | ✅ `setup_test.go` |
 
 **Exit:** Config safe to edit programmatically; headless boots faster by default.
 
@@ -405,7 +406,7 @@ Implemented as same-package file split (zero behavior change; methods stay on `M
 Week 1        Q0 stabilize CI (race, coverage floor, dogfood offline)
 Week 1–2      Q1 agent/permission tests + rate-limit retry
 Week 2         Q2 split model.go ✅ (same-package files; ~638 LOC shell)
-Week 3–4      Q3 config/secrets + bootstrap
+Week 3         Q3 config/secrets + bootstrap ✅
 Week 4–5      Q4 sessions durability
 Week 5–7      Q5 TUI polish + field Batch A/F
 Week 6–7      Q6 ACP harden

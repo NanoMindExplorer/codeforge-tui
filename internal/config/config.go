@@ -30,6 +30,8 @@ type Config struct {
 	Skills SkillsConfig `mapstructure:"skills"`
 	// Subagents configures personas (Phase G6).
 	Subagents SubagentsConfig `mapstructure:"subagents"`
+	// Secrets controls API key persistence (Q3.2 / Q3.3). Prefer env over disk.
+	Secrets SecretsConfig `mapstructure:"secrets"`
 }
 
 // SubagentsConfig holds persona overlays for spawn_subagent.
@@ -292,6 +294,9 @@ func Default() *Config {
 			Personas:  nil,
 			ExtraDirs: nil,
 		},
+		Secrets: SecretsConfig{
+			Backend: SecretsAuto,
+		},
 	}
 }
 
@@ -311,7 +316,15 @@ func (c *Config) SkillsCompatCursor() bool {
 	return *c.Skills.CompatCursor
 }
 
+// ConfigDir returns the directory for config.yaml (Q3 tests: CODEFORGE_CONFIG_DIR).
+// Precedence: CODEFORGE_CONFIG_DIR → XDG_CONFIG_HOME/codeforge → ~/.config/codeforge.
 func ConfigDir() (string, error) {
+	if d := strings.TrimSpace(os.Getenv("CODEFORGE_CONFIG_DIR")); d != "" {
+		return d, nil
+	}
+	if xdg := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); xdg != "" {
+		return filepath.Join(xdg, "codeforge"), nil
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -319,7 +332,12 @@ func ConfigDir() (string, error) {
 	return filepath.Join(home, ".config", "codeforge"), nil
 }
 
-func Load() (*Config, error) {
+// LoadRaw loads config without secret resolution or validation (tests / repair).
+func LoadRaw() (*Config, error) {
+	return loadUnchecked()
+}
+
+func loadUnchecked() (*Config, error) {
 	cfg := Default()
 	v := viper.New()
 	v.SetConfigType("yaml")
@@ -344,6 +362,7 @@ func Load() (*Config, error) {
 	_ = v.BindEnv("providers.xai.api_key", "XAI_API_KEY")
 	_ = v.BindEnv("sandbox.profile", "CODEFORGE_SANDBOX")
 	_ = v.BindEnv("theme", "CODEFORGE_THEME")
+	_ = v.BindEnv("secrets.backend", "CODEFORGE_SECRETS_BACKEND")
 
 	if err := v.ReadInConfig(); err != nil {
 		// file not found OK
@@ -356,153 +375,114 @@ func Load() (*Config, error) {
 	if cfg.Providers == nil {
 		cfg.Providers = make(map[string]Provider)
 	}
-	// Fill empty API keys from env (deep-merge friendly)
-	fillKey := func(name string, envs ...string) {
-		p, ok := cfg.Providers[name]
-		if !ok {
-			p = Provider{Enabled: true, Type: name}
-		}
-		if p.APIKey == "" {
-			for _, e := range envs {
-				if v := os.Getenv(e); v != "" {
-					p.APIKey = v
-					break
-				}
-			}
-		}
-		cfg.Providers[name] = p
-	}
-	fillKey("claude", "ANTHROPIC_API_KEY")
-	fillKey("gemini", "GEMINI_API_KEY")
-	fillKey("openai", "OPENAI_API_KEY")
-	fillKey("grok", "XAI_API_KEY", "GROK_API_KEY")
-	fillKey("xai", "XAI_API_KEY", "GROK_API_KEY")
 	return cfg, nil
 }
 
-// SaveProviderKey writes/updates providers.<name>.api_key (and optional model) in config.yaml.
-func SaveProviderKey(name, apiKey, model string) error {
-	name = strings.ToLower(strings.TrimSpace(name))
-	if name == "xai" {
-		name = "grok"
+// Load reads config, resolves secrets (prefer env), validates schema (Q3.5).
+func Load() (*Config, error) {
+	cfg, err := loadUnchecked()
+	if err != nil {
+		return nil, err
 	}
+	// Prefer env → keystore → config.yaml (Q3.2). Never require config keys.
+	fillKey := func(name string) {
+		p, ok := cfg.Providers[name]
+		if !ok {
+			p = Provider{Enabled: true, Type: defaultProviderType(name)}
+		}
+		if resolved := ResolveAPIKey(name, p.APIKey); resolved != "" {
+			p.APIKey = resolved
+		}
+		cfg.Providers[name] = p
+	}
+	fillKey("claude")
+	fillKey("gemini")
+	fillKey("openai")
+	fillKey("grok")
+	fillKey("xai")
+
+	_ = EnsureConfigPermissions()
+
+	if err := Validate(cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// SaveProviderKey stores an API key using secrets.backend and updates model in YAML.
+// Prefer env when already set (no disk write for the secret). Model/default still update.
+//
+// Storage policy (Q3.2 / Q3.3):
+//  1. If env already has a key for this provider → do not write secret; update model only
+//  2. secrets.backend=env_only → error (export env instead)
+//  3. auto/keyring/file → OS keyring and/or keys/<provider>.key (0600), not config.yaml
+//  4. model + default_provider always updated non-destructively in config.yaml
+func SaveProviderKey(name, apiKey, model string) error {
+	name = normalizeProviderName(name)
 	if name == "" || strings.TrimSpace(apiKey) == "" {
 		return fmt.Errorf("provider and api key required")
 	}
-	cfg, err := Load()
-	if err != nil || cfg == nil {
+	cfg, _ := loadUnchecked()
+	if cfg == nil {
 		cfg = Default()
 	}
-	if cfg.Providers == nil {
-		cfg.Providers = map[string]Provider{}
+	backend := effectiveBackend(cfg.Secrets.Backend)
+
+	// Persist secret outside YAML when possible (prefer env → skip disk).
+	if err := StoreAPIKey(name, apiKey, backend, true); err != nil {
+		return err
 	}
-	p := cfg.Providers[name]
-	p.Enabled = true
-	p.APIKey = strings.TrimSpace(apiKey)
-	if model != "" {
-		p.DefaultModel = model
-	}
-	if p.Type == "" {
-		switch name {
-		case "grok":
-			p.Type = "xai"
-		case "claude":
-			p.Type = "anthropic"
-		default:
-			p.Type = name
-		}
-	}
-	cfg.Providers[name] = p
-	return writeConfig(cfg)
+
+	// Metadata only in YAML — never re-inject env keys; avoid plaintext when file/keyring used.
+	return setProviderYAML(name, "", model, true)
 }
 
-// SaveDefaultProvider sets default_provider in config.yaml.
+// SaveDefaultProvider sets default_provider only — never rewrites API keys (Q3.1).
 func SaveDefaultProvider(name string) error {
-	name = strings.ToLower(strings.TrimSpace(name))
-	if name == "" {
-		return fmt.Errorf("provider name required")
-	}
-	cfg, err := Load()
-	if err != nil || cfg == nil {
-		cfg = Default()
-	}
-	cfg.DefaultProvider = name
-	return writeConfig(cfg)
+	return setDefaultProviderYAML(name)
 }
 
-func writeConfig(cfg *Config) error {
-	cfgDir, err := ConfigDir()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(cfgDir, 0755); err != nil {
-		return err
-	}
-	path := filepath.Join(cfgDir, "config.yaml")
-	// Merge carefully: load existing file as viper map if present
-	v := viper.New()
-	v.SetConfigType("yaml")
-	v.SetConfigFile(path)
-	_ = v.ReadInConfig() // ignore missing
-
-	v.Set("default_provider", cfg.DefaultProvider)
-	if cfg.Theme != "" {
-		v.Set("theme", cfg.Theme)
-	}
-	for name, p := range cfg.Providers {
-		prefix := "providers." + name
-		v.Set(prefix+".enabled", p.Enabled)
-		if p.Type != "" {
-			v.Set(prefix+".type", p.Type)
-		}
-		if p.APIKey != "" {
-			v.Set(prefix+".api_key", p.APIKey)
-		}
-		if p.DefaultModel != "" {
-			v.Set(prefix+".default_model", p.DefaultModel)
-		}
-		if p.Endpoint != "" {
-			v.Set(prefix+".endpoint", p.Endpoint)
-		}
-	}
-	return v.WriteConfigAs(path)
-}
-
+// SaveExample writes a starter config.yaml if missing (mode 0600).
 func SaveExample() error {
 	cfgDir, err := ConfigDir()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(cfgDir, 0755); err != nil {
+	if err := os.MkdirAll(cfgDir, DirModeConfig); err != nil {
 		return err
 	}
 	examplePath := filepath.Join(cfgDir, "config.yaml")
 	if _, err := os.Stat(examplePath); err == nil {
+		_ = os.Chmod(examplePath, FileModeConfig)
 		return nil
 	}
 	content := `# CodeForge TUI Configuration
+# Keys: prefer env (XAI_API_KEY, GEMINI_API_KEY, …). See docs/SECRETS.md
 default_provider: grok
 theme: groknight
+
+# secrets:
+#   backend: auto      # auto | file | keyring | env_only
 
 providers:
   grok:
     enabled: true
-    type: openai
-    api_key: ""          # or set XAI_API_KEY / GROK_API_KEY
+    type: xai
+    api_key: ""          # optional — prefer XAI_API_KEY / GROK_API_KEY
     default_model: grok-4.5
   gemini:
     enabled: true
-    type: gemini
-    api_key: ""          # or set GEMINI_API_KEY
+    type: google
+    api_key: ""          # optional — prefer GEMINI_API_KEY
     default_model: gemini-2.5-flash
   claude:
     enabled: true
     type: anthropic
-    api_key: ""          # or set ANTHROPIC_API_KEY
+    api_key: ""          # optional — prefer ANTHROPIC_API_KEY
     default_model: claude-sonnet-4-20250514
 
 # sandbox:
-#   profile: workspace   # off | workspace | read-only | strict
+#   profile: workspace   # off | workspace | read-only | strict | devbox
 
 # ui:
 #   vim_mode: false
@@ -528,5 +508,5 @@ permissions:
   #     pattern: "go test *"
   #     effect: allow
 `
-	return os.WriteFile(examplePath, []byte(content), 0644)
+	return writeFileAtomic(examplePath, []byte(content), FileModeConfig)
 }

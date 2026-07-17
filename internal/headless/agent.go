@@ -98,12 +98,17 @@ func Run(opt Options, w io.Writer) (Result, error) {
 		opt.MaxIter = 12
 	}
 
+	// Q3.4: headless defaults SkipIndex=true for fast CI/agent boots.
+	// Set CODEFORGE_INDEX=1 to force codebase index when tools need it.
+	skipIndex := os.Getenv("CODEFORGE_INDEX") != "1"
 	rt, err := app.Bootstrap(app.Options{
 		WorkDir:        opt.WorkDir,
 		Quiet:          opt.Quiet || opt.JSON,
 		ActMode:        opt.Act || !opt.Plan,
 		PlanMode:       opt.Plan,
-		SkipIndex:      false,
+		SkipIndex:      skipIndex,
+		SkipMCP:        true, // headless rarely needs MCP at boot
+		SkipPlugins:    true,
 		Sandbox:        opt.Sandbox,
 		SandboxFlagSet: opt.SandboxFlagSet,
 	})

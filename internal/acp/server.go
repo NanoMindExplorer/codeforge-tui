@@ -211,13 +211,15 @@ func (s *Server) doSessionNew(params json.RawMessage) (SessionNewResult, error) 
 		cwd = abs
 	}
 
-	// Bootstrap runtime once per session
+	// Bootstrap runtime once per session (Q3.4: skip index by default for IDE latency)
 	rt, err := app.Bootstrap(app.Options{
-		WorkDir:   cwd,
-		Quiet:     true,
-		ActMode:   s.opt.AlwaysApprove || !s.opt.Plan,
-		PlanMode:  s.opt.Plan,
-		SkipIndex: false,
+		WorkDir:     cwd,
+		Quiet:       true,
+		ActMode:     s.opt.AlwaysApprove || !s.opt.Plan,
+		PlanMode:    s.opt.Plan,
+		SkipIndex:   true,
+		SkipMCP:     false,
+		SkipPlugins: false,
 	})
 	if err != nil {
 		return SessionNewResult{}, err

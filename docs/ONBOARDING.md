@@ -70,7 +70,10 @@ Full catalog with env names, key shapes, and docs URLs — paste once, done.
 | Path | Role |
 |------|------|
 | `~/.codeforge/onboarding.json` | completed / skipped / preferred provider / welcome_shown |
-| `~/.config/codeforge/config.yaml` | `default_provider` + optional `providers.*.api_key` |
+| `~/.config/codeforge/config.yaml` | `default_provider` + optional settings (**mode 0600**) |
+| `~/.config/codeforge/keys/<provider>.key` | Optional file keystore (**mode 0600**) when not using env/keyring |
+
+**Prefer env vars over config-file keys.** See [SECRETS.md](./SECRETS.md) for resolution order, `secrets.backend`, and keyring.
 
 ## Env vars
 
@@ -81,6 +84,13 @@ Full catalog with env names, key shapes, and docs URLs — paste once, done.
 | Claude | `ANTHROPIC_API_KEY` |
 | OpenAI-compatible | `OPENAI_API_KEY` (+ optional `OPENAI_BASE_URL`) |
 | Ollama | `OLLAMA_HOST` (default localhost) |
+
+| Ops | Env |
+|-----|-----|
+| Config dir (tests/portable) | `CODEFORGE_CONFIG_DIR` |
+| Secrets backend override | `CODEFORGE_SECRETS_BACKEND=auto\|file\|keyring\|env_only` |
+| Disable OS keyring | `CODEFORGE_NO_KEYRING=1` |
+| Force codebase index (headless) | `CODEFORGE_INDEX=1` |
 
 ## Headless / CI
 

@@ -362,8 +362,9 @@ When implementing further changes, each PR should:
 
 ## Living checklist
 
-> **Status sync:** last updated for **v1.9.0** (W1–W4).  
-> Detail for each phase is in the body of this doc; this section is the at-a-glance status only.
+> **Status sync:** last updated for **v1.9.3** + audit phases **Q0–Q2**.  
+> Detail for each phase is in the body of this doc; this section is the at-a-glance status only.  
+> Post-parity quality track: see [`AUDIT_AND_ROADMAP.md`](./AUDIT_AND_ROADMAP.md) (Q0 CI · Q1 agent · **Q2 TUI split**).
 
 ### Phase 0 — Contract
 - [x] Roadmap written

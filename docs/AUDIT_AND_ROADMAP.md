@@ -4,7 +4,9 @@
 **Baseline:** `v1.9.3` (`main`)  
 **Scope:** entire Go module `github.com/codeforge/tui`, scripts, CI, docs, packaging  
 
-**Q0 status:** implemented — race job, coverage floor (`scripts/coverage-floor.txt` = 33%), offline dogfood CI, govulncheck (warn), claim language links.
+**Q0 status:** implemented — race job, coverage floor (`scripts/coverage-floor.txt` = 34%), offline dogfood CI, govulncheck (warn), claim language links.  
+**Q1 status:** implemented — agent unit tests (~88%), LoopError, rate-limit retry, redact, headless codes.  
+**Q2 status:** implemented — TUI orchestrator split; `model.go` **~638 LOC** (from ~3.8k); keys/stream/session/slash files + `AppServices` + unit tests.
 
 This document is the single source of truth for **what the codebase is today**, **what hurts**, and **how to improve it in ordered phases**.
 
@@ -25,7 +27,7 @@ This document is the single source of truth for **what the codebase is today**, 
 | **Observability** | **C** | Optional error log + telemetry stub; no structured tracing |
 | **Overall ship readiness** | **B** | Solid early-stable product; not yet “maintainable for a team” |
 
-**Bottom line:** CodeForge is a **feature-rich v1.x** that can already replace a large slice of Grok Build workflows in headless/CI and much of the TUI. The largest risks are **maintainability** (`model.go` ~3.8k LOC), **test blind spots** (`agent`, `app`, config save), and **incomplete interactive dogfood** before a hard “1:1 Grok daily driver” claim.
+**Bottom line:** CodeForge is a **feature-rich v1.x** that can already replace a large slice of Grok Build workflows in headless/CI and much of the TUI. After Q2 the TUI orchestrator is **decomposed** (`model.go` ~638 LOC). Remaining risks: **test blind spots** (`app`, config save), **config/secrets** (Q3), and **incomplete interactive dogfood** before a hard “1:1 Grok daily driver” claim.
 
 ---
 
@@ -41,7 +43,8 @@ This document is the single source of truth for **what the codebase is today**, 
 | Statement coverage (approx.) | **~33.7%** total |
 | Packages under `internal/` | **34** |
 | Packages with **zero** tests | **20** (see §4.2) |
-| Largest file | `internal/tui/model.go` **~3,824 LOC** |
+| Largest file (pre-Q2) | `internal/tui/model.go` was **~3,824 LOC** → **~638 LOC** after Q2 |
+| Largest TUI files (post-Q2) | `slash.go` ~1.1k · `keys.go` ~1.0k · `chat.go` ~668 |
 | Secondary large files | `pager.go` ~840, `tokens.go` ~699, `chat.go` ~668, `errors.go` ~639, `agent.go` ~318 |
 | Binary size (CGO=0) | **~23–24 MiB** (under 30 MiB CI gate) |
 | Module | `github.com/codeforge/tui` · **Go 1.25** |
@@ -89,7 +92,7 @@ Severity: **P0** ship-blocker · **P1** high · **P2** medium · **P3** nice-to-
 
 | ID | Sev | Finding | Evidence / impact |
 |----|-----|---------|-------------------|
-| A1 | **P0** | **God orchestrator** `internal/tui/model.go` (~3.8k LOC) owns modes, slash commands, GitHub, sessions, permissions UI, agent pump, settings… | Any feature risks regressions; review/test isolation nearly impossible |
+| A1 | **P0** → **mitigated (Q2)** | God orchestrator split: `model.go` shell + `keys.go` / `slash.go` / `slash_github.go` / `stream.go` / `session_ctl.go` / `services.go` | Add slash commands in `slash.go` without editing a 4k file |
 | A2 | **P1** | Slash/command handling is a giant switch inside the same file | ~100+ case arms; hard to extend safely |
 | A3 | **P1** | Process-wide **globals** (`todos.Global`, `bgtask.Global`, sandbox/workspace globals, `tool.SubagentAuthorizer`) | Hidden coupling; hard to test in parallel; race risk under multi-session ACP |
 | A4 | **P1** | `internal/agent` is a single file with **no unit tests** | Core loop untested for tool iteration, auth deny, max-iter, cancel |
@@ -251,29 +254,31 @@ Naming: **Phase Qx** = Quality/repair track (distinct from historical Grok parit
 
 ---
 
-### Phase Q2 — Decompose TUI orchestrator (2–3 weeks) **P0 architecture**
+### Phase Q2 — Decompose TUI orchestrator (2–3 weeks) **P0 architecture** ✅ **DONE**
 
 **Goal:** `model.go` becomes a thin shell.
 
-Suggested split (incremental, keep behavior):
+Implemented as same-package file split (zero behavior change; methods stay on `Model`):
 
-| New package / file | Responsibility |
-|--------------------|----------------|
-| `internal/tui/slash/` | All `/commands` handlers (provider, setup, git, gh, session…) |
-| `internal/tui/keys/` | Global key routing / mode machine |
-| `internal/tui/stream/` | Stream + agent pump adapters |
-| `internal/tui/sessionctl/` | resume/fork/rewind/compact wiring |
-| `internal/tui/model.go` | Layout, Init/Update dispatch only |
+| File | Responsibility | ~LOC |
+|------|----------------|------|
+| `internal/tui/model.go` | Types, `New`/`Init`/`Update`/`View`, layout | **~638** |
+| `internal/tui/keys.go` | `handleKeyMsg` + modal updaters (Esc stack, Shift+Tab, palette…) | ~1.0k |
+| `internal/tui/slash.go` | `executeSlashCommand` + help/autocomplete | ~1.1k |
+| `internal/tui/slash_github.go` | `/gh` `/pr` `/issue` handlers | ~440 |
+| `internal/tui/stream.go` | Agent/stream pump + msg types + tokens/budget | ~340 |
+| `internal/tui/session_ctl.go` | resume/fork/rewind/compact/session pickers | ~360 |
+| `internal/tui/services.go` | `AppServices` DI over todos/bgtask/sandbox/skills/personas | ~70 |
 
-| # | Work item | DoD |
-|---|-----------|-----|
-| Q2.1 | Extract slash handlers without behavior change | `model.go` &lt; 2.5k LOC |
-| Q2.2 | Extract key routing | Focused tests for Esc stack / Shift+Tab |
-| Q2.3 | Extract stream/agent message handling | Pump logic unit-tested |
-| Q2.4 | Dependency injection for globals used by TUI | Optional `AppServices` struct replacing ad-hoc globals in new code |
-| Q2.5 | `model.go` target **&lt; 1.2k LOC** | Measured |
+| # | Work item | DoD | Status |
+|---|-----------|-----|--------|
+| Q2.1 | Extract slash handlers without behavior change | `model.go` &lt; 2.5k LOC | ✅ **~638** |
+| Q2.2 | Extract key routing | Focused tests for Esc stack / Shift+Tab | ✅ `keys_test.go` |
+| Q2.3 | Extract stream/agent message handling | Pump logic unit-tested | ✅ `stream_test.go` |
+| Q2.4 | Dependency injection for globals used by TUI | Optional `AppServices` | ✅ `services.go` + helpers |
+| Q2.5 | `model.go` target **&lt; 1.2k LOC** | Measured | ✅ **~638 LOC** |
 
-**Exit:** Contributors can add a slash command without editing a 4k file.
+**Exit:** Contributors can add a slash command in `slash.go` without editing a 4k file.
 
 ---
 
@@ -399,7 +404,7 @@ Suggested split (incremental, keep behavior):
 ```text
 Week 1        Q0 stabilize CI (race, coverage floor, dogfood offline)
 Week 1–2      Q1 agent/permission tests + rate-limit retry
-Week 2–5      Q2 split model.go (parallelizable with Q1 end)
+Week 2         Q2 split model.go ✅ (same-package files; ~638 LOC shell)
 Week 3–4      Q3 config/secrets + bootstrap
 Week 4–5      Q4 sessions durability
 Week 5–7      Q5 TUI polish + field Batch A/F
@@ -420,7 +425,7 @@ Week 12       Claim review + version bump
 CodeForge is “done enough” for a strong public claim when:
 
 1. **Coverage ≥ 55%** overall; **agent/permission/session/provider ≥ 75%**.  
-2. **`model.go` &lt; 1.2k LOC** with slash modules.  
+2. **`model.go` &lt; 1.2k LOC** with slash modules. ✅ (~638; keys/slash/stream/session_ctl).
 3. **Race-clean** critical packages.  
 4. **Dogfood PROGRAM** complete; SCORECARD recommends daily use.  
 5. **Keys** not required in plaintext (env or keyring).  

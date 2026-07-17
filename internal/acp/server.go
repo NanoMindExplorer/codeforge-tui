@@ -362,19 +362,15 @@ func (s *Server) doSessionPrompt(req Request) {
 		prev()
 	}
 	s.cancels[p.SessionID] = cancel
-	// Q6.2: install this session's tools as spawn parent for the duration of the turn.
-	// Capture previous and restore so concurrent sessions keep their own registry.Authorizer
-	// (spawn resolves via tools.Authorizer first; parent pointer is best-effort for MCP).
-	prevParent := tool.SubagentParentRegistry
+	// Q6.2: session-local authorizer only (no process-wide SubagentParentRegistry swap —
+	// that raced under concurrent prompts/tests). Spawn resolves via tools.Authorizer.
 	if as.tools != nil {
 		as.tools.Authorizer = as.auth
-		tool.SubagentParentRegistry = as.tools
 	}
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		delete(s.cancels, p.SessionID)
-		tool.SubagentParentRegistry = prevParent
 		s.mu.Unlock()
 		cancel()
 	}()

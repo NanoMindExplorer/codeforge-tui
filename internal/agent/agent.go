@@ -10,13 +10,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/codeforge/tui/internal/provider"
+	"github.com/codeforge/tui/internal/redact"
 	"github.com/codeforge/tui/internal/tool"
 )
 
 const DefaultMaxIterations = 12
 const DefaultMaxTokens = 4096
+const defaultRateLimitRetries = 1
+const defaultRateLimitBackoff = 1 * time.Second
 
 type EventKind int
 
@@ -72,6 +76,12 @@ type Config struct {
 	MaxIterations int
 	// Auth optional permission/hooks gate
 	Auth Authorizer
+	// RateLimitRetries is extra attempts after a rate_limit error (default 1).
+	// Set 0 to disable rate-limit retry.
+	RateLimitRetries *int
+	// Sleep is used for rate-limit backoff (injectable in tests).
+	// Default: interruptible sleep that returns on ctx cancel.
+	Sleep func(ctx context.Context, d time.Duration) error
 }
 
 func Run(ctx context.Context, cfg Config, history []provider.Message) <-chan Event {
@@ -83,9 +93,18 @@ func Run(ctx context.Context, cfg Config, history []provider.Message) <-chan Eve
 	return out
 }
 
+func emitErr(out chan<- Event, err error) {
+	if err == nil {
+		return
+	}
+	// Keep LoopError as-is so headless can map code=max_iterations|canceled|no_provider.
+	// FormatUserError understands UserMessage() interface and ProviderError.
+	out <- Event{Kind: EventError, Error: err}
+}
+
 func runLoop(ctx context.Context, cfg Config, history []provider.Message, out chan<- Event) {
 	if cfg.Provider == nil {
-		out <- Event{Kind: EventError, Error: fmt.Errorf("no AI provider configured")}
+		emitErr(out, errNoProvider())
 		return
 	}
 
@@ -97,6 +116,14 @@ func runLoop(ctx context.Context, cfg Config, history []provider.Message, out ch
 	if maxTokens <= 0 {
 		maxTokens = DefaultMaxTokens
 	}
+	sleep := cfg.Sleep
+	if sleep == nil {
+		sleep = defaultSleep
+	}
+	rlRetries := defaultRateLimitRetries
+	if cfg.RateLimitRetries != nil {
+		rlRetries = *cfg.RateLimitRetries
+	}
 
 	toolDefs := buildToolDefs(cfg.Tools)
 	messages := make([]provider.Message, len(history))
@@ -104,7 +131,7 @@ func runLoop(ctx context.Context, cfg Config, history []provider.Message, out ch
 
 	for iter := 0; iter < maxIter; iter++ {
 		if ctx.Err() != nil {
-			out <- Event{Kind: EventDone}
+			emitErr(out, errCanceled())
 			return
 		}
 
@@ -116,18 +143,17 @@ func runLoop(ctx context.Context, cfg Config, history []provider.Message, out ch
 			Tools:       toolDefs,
 		}
 
-		// E4: if model rejects thinking params, retry once with Reasoning=off.
-		resp, retried, err := provider.CompleteRetryingReasoning(ctx, cfg.Provider, req)
+		resp, notices, err := completeWithRetries(ctx, cfg.Provider, req, rlRetries, sleep)
+		for _, n := range notices {
+			out <- Event{Kind: EventInfo, Text: n}
+		}
 		if err != nil {
 			if ctx.Err() != nil {
-				out <- Event{Kind: EventDone}
+				emitErr(out, errCanceled())
 				return
 			}
-			out <- Event{Kind: EventError, Error: err}
+			emitErr(out, err)
 			return
-		}
-		if retried {
-			out <- Event{Kind: EventInfo, Text: "🧠 Reasoning not supported by this model — continued without thinking\n  → set CODEFORGE_REASONING=off to skip the retry, or /model another id"}
 		}
 
 		if strings.TrimSpace(resp.Reasoning) != "" {
@@ -197,8 +223,8 @@ func runLoop(ctx context.Context, cfg Config, history []provider.Message, out ch
 				ToolDiff:    result.diff,
 			}
 
-			// Cap model-facing tool results to keep context healthy
-			forModel := result.forModel
+			// Cap + redact model-facing tool results (Q1.6)
+			forModel := redact.Redact(result.forModel)
 			if len(forModel) > 24_000 {
 				forModel = forModel[:24_000] + "\n… (truncated for model context)"
 			}
@@ -213,10 +239,66 @@ func runLoop(ctx context.Context, cfg Config, history []provider.Message, out ch
 		}
 
 		if iter == maxIter-1 {
-			out <- Event{Kind: EventError, Error: fmt.Errorf("reached max iterations (%d) without a final answer", maxIter)}
+			emitErr(out, errMaxIterations(maxIter))
 			return
 		}
 	}
+}
+
+// completeWithRetries: reasoning unsupported retry + one rate_limit backoff retry.
+func completeWithRetries(
+	ctx context.Context,
+	p provider.Provider,
+	req provider.CompletionRequest,
+	rateLimitRetries int,
+	sleep func(context.Context, time.Duration) error,
+) (*provider.CompletionResponse, []string, error) {
+	var notices []string
+
+	resp, reasoningRetried, err := provider.CompleteRetryingReasoning(ctx, p, req)
+	if reasoningRetried && err == nil {
+		notices = append(notices, "🧠 Reasoning not supported by this model — continued without thinking\n  → set CODEFORGE_REASONING=off to skip the retry, or /model another id")
+	}
+	if err == nil {
+		return resp, notices, nil
+	}
+	if ctx.Err() != nil {
+		return nil, notices, err
+	}
+
+	// Rate-limit: wait and retry once (or RateLimitRetries times)
+	for attempt := 0; attempt < rateLimitRetries; attempt++ {
+		pe, ok := provider.AsProviderError(err)
+		if !ok || pe == nil || pe.Code != provider.ErrRateLimit || !pe.Retry {
+			break
+		}
+		wait := pe.RetryAfter
+		if wait <= 0 {
+			wait = defaultRateLimitBackoff
+		}
+		// Cap absurd retry-after values for UX
+		if wait > 60*time.Second {
+			wait = 60 * time.Second
+		}
+		notices = append(notices, fmt.Sprintf("⏳ Rate limited — retrying in ~%s (attempt %d/%d)", wait.Round(time.Second), attempt+1, rateLimitRetries))
+		if err := sleep(ctx, wait); err != nil {
+			return nil, notices, errCanceled()
+		}
+		// After rate limit, prefer reasoning off on retry to reduce load
+		req2 := req
+		req2.Reasoning = "off"
+		resp, reasoningRetried, err = provider.CompleteRetryingReasoning(ctx, p, req2)
+		if reasoningRetried && err == nil {
+			notices = append(notices, "🧠 Reasoning not supported by this model — continued without thinking")
+		}
+		if err == nil {
+			return resp, notices, nil
+		}
+		if ctx.Err() != nil {
+			return nil, notices, errCanceled()
+		}
+	}
+	return nil, notices, err
 }
 
 func buildToolDefs(reg *tool.Registry) []provider.ToolDefinition {
@@ -315,4 +397,18 @@ func chunkString(s string, n int) []string {
 		s = s[cut:]
 	}
 	return out
+}
+
+func defaultSleep(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }

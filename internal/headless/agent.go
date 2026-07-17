@@ -255,15 +255,7 @@ Reply with a clear summary of what you did.`
 		SessionID:    sess.ID,
 	}
 	if lastErr != nil {
-		pe, _ := provider.AsProviderError(lastErr)
-		if pe != nil {
-			res.Error = pe.Message
-			res.Code = string(pe.Code)
-			res.Hint = pe.Hint
-		} else {
-			res.Error = lastErr.Error()
-			res.Code = "unknown"
-		}
+		res.Code, res.Error, res.Hint = mapAgentError(lastErr)
 	}
 	if opt.JSON {
 		res.Events = events
@@ -311,6 +303,34 @@ func failResult(code, msg, hint string, err error) Result {
 		msg = err.Error()
 	}
 	return Result{OK: false, Error: msg, Code: code, Hint: hint}
+}
+
+// mapAgentError maps provider + agent loop errors to stable JSON codes (Q1.7).
+func mapAgentError(err error) (code, message, hint string) {
+	if err == nil {
+		return "", "", ""
+	}
+	// Prefer agent.Format for LoopError + ProviderError
+	code, message, hint = agent.Format(err)
+	if code != "" && code != "unknown" {
+		return code, message, hint
+	}
+	// Agent emits LoopError as *provider.ProviderError via ToProviderError —
+	// recover max_iterations / canceled from message when needed.
+	pe, ok := provider.AsProviderError(err)
+	if ok && pe != nil {
+		// If loop converted max_iterations to ErrUnknown, re-detect
+		if pe.Provider == "agent" && strings.Contains(strings.ToLower(pe.Message), "max iteration") {
+			return "max_iterations", pe.Message, pe.Hint
+		}
+		if pe.Provider == "agent" && strings.Contains(strings.ToLower(pe.Message), "canceled") {
+			return "canceled", pe.Message, pe.Hint
+		}
+		if pe.Code != "" {
+			return string(pe.Code), pe.Message, pe.Hint
+		}
+	}
+	return "unknown", err.Error(), "Retry or run /doctor"
 }
 
 func trim(s string, n int) string {

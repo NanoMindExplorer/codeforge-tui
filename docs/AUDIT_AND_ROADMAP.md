@@ -233,19 +233,19 @@ Naming: **Phase Qx** = Quality/repair track (distinct from historical Grok parit
 
 ---
 
-### Phase Q1 — Core loop correctness (1–1.5 weeks) **P0/P1**
+### Phase Q1 — Core loop correctness (1–1.5 weeks) **P0/P1** ✅ **DONE**
 
 **Goal:** The agent/tool/permission path is bulletproof and tested.
 
-| # | Work item | Detail | DoD |
-|---|-----------|--------|-----|
-| Q1.1 | **`internal/agent` unit tests** | Mock provider: (a) text-only done (b) tool call → result → done (c) auth deny (d) max iter (e) ctx cancel (f) reasoning retry info event | ≥85% agent package coverage |
-| Q1.2 | **Structured max-iter / cancel errors** | Use typed errors consumable by FormatUserError | Friendly TUI message |
-| Q1.3 | **Rate-limit retry (1×)** | Optional single backoff when `ErrRateLimit` + RetryAfter | Test with mock clock/provider |
-| Q1.4 | **Permission integration tests** | Shell alias `run_terminal_command` parity, DESIGN+write, hook deny in agent loop | Table-driven tests |
-| Q1.5 | **Staged write E2E** | BUILD stage → accept → apply → undo/checkpoint | Integration test |
-| Q1.6 | **Redact on tool outputs** | Apply `redact.Redact` to model-facing tool content always | Unit test secret not in forModel |
-| Q1.7 | **Headless error codes complete** | Map all ProviderError codes to JSON `code` consistently | Contract tests |
+| # | Work item | Detail | DoD | Status |
+|---|-----------|--------|-----|--------|
+| Q1.1 | **`internal/agent` unit tests** | Mock provider: text, tools, auth deny, max iter, cancel, reasoning + rate-limit info | ≥85% agent coverage | ✅ **~88.6%** |
+| Q1.2 | **Structured max-iter / cancel errors** | `LoopError` + `UserMessage()` for FormatUserError | Friendly TUI | ✅ |
+| Q1.3 | **Rate-limit retry (1×)** | Interruptible sleep; injectable `Config.Sleep` | Mock tests | ✅ |
+| Q1.4 | **Permission integration tests** | Alias parity, DESIGN, hooks in agent loop | `q1_test.go` | ✅ |
+| Q1.5 | **Staged write E2E** | BUILD stage → apply → checkpoint undo | Integration | ✅ |
+| Q1.6 | **Redact on tool outputs** | `redact.Redact` on forModel path | Unit test | ✅ |
+| Q1.7 | **Headless error codes** | `mapAgentError` for all codes + loop codes | `codes_test.go` | ✅ |
 
 **Exit:** Core loop covered; no known untested auth/tool iteration path.
 

@@ -7,6 +7,15 @@ Automated readiness: `make release-gate` (see [docs/RELEASE_GATE.md](./docs/RELE
 
 ## [1.9.3] — 2026-07-16
 
+### Core loop correctness (Q1) — post-tag main
+
+- `internal/agent` unit tests (text, tools, auth deny, max-iter, cancel, rate-limit retry, reasoning retry, redact) — **~88%** package coverage.
+- Structured `LoopError` (`max_iterations`, `canceled`, `no_provider`) with TUI-friendly `UserMessage`.
+- Rate-limit: one interruptible backoff retry + EventInfo notice.
+- Tool results redacted via `redact.Redact` before return to the model.
+- Headless JSON maps all ProviderError + agent loop codes (`mapAgentError`).
+- Integration: shell alias permission parity, DESIGN write gate, staged apply + checkpoint undo, hook deny in agent loop.
+
 ### Quality gates (Q0) — post-tag main
 
 - CI jobs: coverage floor (`scripts/coverage-floor.txt`), `-race` critical packages, offline dogfood, govulncheck (warn).

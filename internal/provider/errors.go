@@ -134,10 +134,18 @@ func AsProviderError(err error) (*ProviderError, bool) {
 	return Classify(err, 0, "", ""), true
 }
 
+// userMessenger is implemented by ProviderError and agent.LoopError.
+type userMessenger interface {
+	UserMessage() string
+}
+
 // FormatUserError turns any error into a friendly multi-line string for the TUI.
 func FormatUserError(err error) string {
 	if err == nil {
 		return ""
+	}
+	if um, ok := err.(userMessenger); ok {
+		return um.UserMessage()
 	}
 	if pe, ok := err.(*ProviderError); ok {
 		return pe.UserMessage()

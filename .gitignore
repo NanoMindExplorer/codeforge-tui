@@ -76,3 +76,4 @@ keystore.properties
 
 coverage.out
 coverage-summary.txt
+binary-size.txt

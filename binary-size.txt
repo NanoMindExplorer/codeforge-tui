@@ -1,6 +1,0 @@
-version=1.9.3
-bytes=24641832
-mib=23.50
-tags=default
-hard_max=31457280
-soft_max=27262976

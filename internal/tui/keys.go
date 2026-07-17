@@ -43,6 +43,12 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.slash.Close()
 		m.openPalette()
 		return m, nil
+	case "ctrl+r":
+		// Q5.3: retry last failed / last user turn
+		if c := m.retryLastTurn(); c != nil {
+			return m, c
+		}
+		return m, nil
 	case "shift+tab":
 		m.toggleAgentMode()
 		return m, nil
@@ -188,6 +194,8 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			preview := inp
+			m.lastUserPrompt = preview
+			m.retryAvailable = false
 			if c := m.chat.Submit(); c != nil {
 				m.recordTurnRewind(preview)
 				m.maybeAutoCompact()
@@ -464,6 +472,32 @@ func (m *Model) updatePicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m, nil
+}
+
+// retryLastTurn re-submits the last user prompt (Q5.3).
+func (m *Model) retryLastTurn() tea.Cmd {
+	prompt := strings.TrimSpace(m.lastUserPrompt)
+	if prompt == "" {
+		m.toast = components.NewToast("Nothing to retry", "info", 2*time.Second)
+		return nil
+	}
+	if m.chat.streaming {
+		m.toast = components.NewToast("Still running…", "warning", 2*time.Second)
+		return nil
+	}
+	if m.budgetBlocks() {
+		m.chat.AddSystemMessage("⛔ Budget exceeded — see /budget")
+		return nil
+	}
+	m.retryAvailable = false
+	m.chat.SetInput(prompt)
+	m.chat.AddSystemMessage("↻ Retrying last turn…")
+	m.toast = components.NewToast("Retrying…", "info", 2*time.Second)
+	if c := m.chat.Submit(); c != nil {
+		m.recordTurnRewind(prompt)
+		return tea.Batch(c, m.persistSessionCmd())
+	}
+	return nil
 }
 
 func (m *Model) handleCtrlC() (tea.Model, tea.Cmd) {

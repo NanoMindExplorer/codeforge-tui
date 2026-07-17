@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -108,6 +109,10 @@ type Model struct {
 
 	// Q2.4: injectable process collaborators (defaults to package globals)
 	svc AppServices
+
+	// Q5.3: last user turn for retry after provider error
+	lastUserPrompt string
+	retryAvailable bool
 }
 
 // permAskRequest is a blocking permission prompt from the agent goroutine.
@@ -250,7 +255,7 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		m.sessionMode = tool.SessionYolo
 		m.syncWriteMode()
 	}
-	// First-run / multi-provider welcome (clear which key is active and why)
+	// Q5.1: single status card (no rules/hooks flood on first paint)
 	healthy := onboarding.ProviderHealthy(provReg)
 	activeName := provReg.CurrentName()
 	activeModel := ""
@@ -258,16 +263,27 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		activeModel = cur.Model()
 	}
 	if onboarding.ShouldShowWelcome(healthy) {
-		m.chat.AddSystemMessage(onboarding.WelcomeMessage(cfg, activeName, activeModel, healthy))
+		m.chat.AddSystemMessage(onboarding.StatusCard(cfg, activeName, activeModel, healthy))
 		if healthy {
 			_ = onboarding.MarkWelcomeShown()
 		}
 	}
+	// Q5.2 empty-state hints (one line each, only when relevant)
+	if !healthy {
+		m.chat.AddSystemMessage(onboarding.EmptyStateNoKey())
+	} else if onboarding.ProjectLooksEmpty(workdir) {
+		m.chat.AddSystemMessage(onboarding.EmptyStateNoProject(workdir))
+	}
+	// Rules/hooks: compact one-liner only (avoid multi-block flood)
+	var extras []string
 	if rb != nil && len(rb.Paths) > 0 {
-		m.chat.AddSystemMessage(rb.Summary())
+		extras = append(extras, fmt.Sprintf("%d rule file(s)", len(rb.Paths)))
 	}
 	if hookRunner != nil && hookRunner.Count() > 0 {
-		m.chat.AddSystemMessage(fmt.Sprintf("Hooks: %d loaded", hookRunner.Count()))
+		extras = append(extras, fmt.Sprintf("%d hook(s)", hookRunner.Count()))
+	}
+	if len(extras) > 0 {
+		m.chat.AddSystemMessage("Project: " + strings.Join(extras, " · ") + "  ·  /rules · /hooks")
 	}
 	return m
 }
@@ -426,7 +442,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.chat.AddSystemMessage(provider.FormatUserError(msg.err))
 		m.chat.streaming = false
-		m.toast = components.NewToast(provider.FormatUserErrorShort(msg.err), "error", 4*time.Second)
+		// Q5.3: offer retry when we still have a last user prompt
+		if strings.TrimSpace(m.lastUserPrompt) != "" {
+			m.retryAvailable = true
+			m.chat.AddSystemMessage("↻ Retry: Ctrl+R or /retry")
+			m.toast = components.NewToast("Error · Ctrl+R to retry", "error", 4*time.Second)
+		} else {
+			m.toast = components.NewToast(provider.FormatUserErrorShort(msg.err), "error", 4*time.Second)
+		}
 	}
 
 	m.syncStatus()

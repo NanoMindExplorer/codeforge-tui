@@ -10,7 +10,7 @@ Rate each area: **Better / Equal / Weaker / N/A / Unknown (needs field)**
 
 | Area | Score | Notes |
 |------|-------|-------|
-| First-run / API setup | Equal* | `/setup`, wizard, key sources (*field UX TBD) |
+| First-run / API setup | Equal* | Q5 StatusCard welcome + empty states; wizard/key sources |
 | Chat + streaming | Unknown | Headless stream/think ok; TUI chrome field TBD |
 | Agent multi-step edits | Equal* | Live headless read+write success |
 | BUILD / DESIGN / YOLO | Equal* | Unit + dogfood tests green |

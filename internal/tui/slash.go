@@ -36,7 +36,7 @@ func isImmediateSlash(cmd string) bool {
 		"/sessions", "/resume", "/new", "/fork", "/rewind", "/compact",
 		"/context", "/session-info", "/mode", "/plan", "/view-plan",
 		"/permissions", "/sandbox", "/pager", "/hooks", "/todos", "/tasks", "/settings", "/copy",
-		"/memory", "/skills", "/personas", "/subagents", "/undo", "/push", "/pull":
+		"/memory", "/skills", "/personas", "/subagents", "/undo", "/push", "/pull", "/retry":
 		return true
 	default:
 		return false
@@ -63,6 +63,10 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 	switch cmd {
 	case "help", "h", "?":
 		m.chat.AddSystemMessage(helpText())
+
+	case "retry":
+		// Q5.3: retry last user turn after provider error (Ctrl+R also works)
+		return m.retryLastTurn()
 
 	case "about":
 		m.chat.AddSystemMessage(aboutText())
@@ -802,7 +806,7 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 	case "cost", "c":
 		dur := time.Since(m.startTime).Round(time.Second)
 		m.chat.AddSystemMessage(fmt.Sprintf(
-			"Session Summary\n  Provider : %s\n  Tokens   : %d\n  Biaya    : $%.4f\n  Durasi   : %s\n  Mode     : %s",
+			"Session Summary\n  Provider : %s\n  Tokens   : %d\n  Cost     : $%.4f\n  Duration : %s\n  Mode     : %s",
 			m.providerReg.CurrentName(), m.totalTokens, m.totalCost, dur, m.status.AgentMode,
 		))
 
@@ -820,12 +824,12 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 				m.context = nc.(ContextModel)
 			}
 		} else {
-			m.chat.AddSystemMessage("Bukan git repository")
+			m.chat.AddSystemMessage("Not a git repository")
 		}
 
 	case "commit":
 		if m.gitRepo == nil {
-			m.chat.AddSystemMessage("Tidak ada git repo")
+			m.chat.AddSystemMessage("No git repository")
 			return nil
 		}
 		if err := m.gitRepo.AddAll(); err != nil {
@@ -968,45 +972,45 @@ func (m *Model) executeSlashCommand(input string) tea.Cmd {
 
 	case "read", "r":
 		if argStr == "" {
-			m.chat.AddSystemMessage("Contoh: /read main.go")
+			m.chat.AddSystemMessage("Example: /read main.go")
 			return nil
 		}
-		return m.chat.SubmitAgent("Baca file " + argStr + " dan tampilkan isinya")
+		return m.chat.SubmitAgent("Read file " + argStr + " and show its contents")
 
 	case "ls", "list":
 		dir := "."
 		if argStr != "" {
 			dir = argStr
 		}
-		return m.chat.SubmitAgent("Tampilkan isi direktori: " + dir)
+		return m.chat.SubmitAgent("List the contents of directory: " + dir)
 
 	case "grep", "find":
 		if argStr == "" {
-			m.chat.AddSystemMessage("Contoh: /grep func main")
+			m.chat.AddSystemMessage("Example: /grep func main")
 			return nil
 		}
-		return m.chat.SubmitAgent("Cari pattern ini di project: " + argStr)
+		return m.chat.SubmitAgent("Search the project for this pattern: " + argStr)
 
 	case "run":
 		if argStr == "" {
-			m.chat.AddSystemMessage("Contoh: /run go build ./...")
+			m.chat.AddSystemMessage("Example: /run go build ./...")
 			return nil
 		}
-		return m.chat.SubmitAgent("Jalankan command ini dan tampilkan hasilnya: " + argStr)
+		return m.chat.SubmitAgent("Run this command and show the output: " + argStr)
 
 	case "explain", "e":
 		if argStr == "" {
-			m.chat.AddSystemMessage("Contoh: /explain main.go")
+			m.chat.AddSystemMessage("Example: /explain main.go")
 			return nil
 		}
-		return m.chat.SubmitAgent("Baca dan jelaskan secara detail kode di: " + argStr)
+		return m.chat.SubmitAgent("Read and explain in detail the code at: " + argStr)
 
 	case "fix":
 		if argStr == "" {
-			m.chat.AddSystemMessage("Contoh: /fix main.go")
+			m.chat.AddSystemMessage("Example: /fix main.go")
 			return nil
 		}
-		return m.chat.SubmitAgent("Baca file " + argStr + ", temukan bug atau error, lalu perbaiki")
+		return m.chat.SubmitAgent("Read file " + argStr + ", find bugs or errors, then fix them")
 
 	case "clear":
 		// Grok: /clear clears chat in-place; /new rotates session id
@@ -1084,7 +1088,7 @@ var slashCommands = []string{
 	"/resume", "/new", "/rename", "/fork", "/rewind", "/compact", "/context", "/session-info",
 	"/mode", "/plan", "/view-plan", "/permissions", "/sandbox", "/pager", "/hooks",
 	"/todos", "/tasks", "/memory", "/skills", "/personas", "/subagents", "/settings", "/copy",
-	"/sessions", "/undo", "/clear", "/help", "/about", "/quit",
+	"/sessions", "/undo", "/retry", "/clear", "/help", "/about", "/quit",
 }
 
 func autocomplete(input string) string {
@@ -1110,6 +1114,7 @@ PRODUCT
   /resume /new /fork /rewind /compact /context
   /plan /todos /tasks /subagents /memory /skills /personas /settings
   /theme /permissions /sandbox /hooks /vim-mode /compact-mode
+  /retry or Ctrl+R   re-send last turn after a provider error
 
 AGENT / IDE
   spawn_subagent background=true · get_subagent_output · resume_from

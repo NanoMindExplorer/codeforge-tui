@@ -214,53 +214,6 @@ func FormatStatus(cfg *config.Config, activeName string) string {
 	return b.String()
 }
 
-// WelcomeMessage is shown once in the TUI after bootstrap.
-func WelcomeMessage(cfg *config.Config, activeName, activeModel string, healthy bool) string {
-	var b strings.Builder
-	// Start brand: ASCII CodeForge + small byline
-	b.WriteString(BrandHeaderPlain())
-	b.WriteString("\n────────────────────\n")
-	present := PresentCloudKeys()
-	res := ResolveActive(cfg)
-	if !healthy {
-		b.WriteString("⚠ No valid provider yet.\n")
-		b.WriteString("  Quick start:\n")
-		b.WriteString("    /setup gemini <AIza…>     free tier\n")
-		b.WriteString("    /setup grok xai-…         Grok 4.5\n")
-		b.WriteString("    /setup ollama             local\n")
-		b.WriteString("  Or export XAI_API_KEY / GEMINI_API_KEY and restart.\n")
-	} else {
-		b.WriteString(fmt.Sprintf("✓ Active: %s", activeName))
-		if activeModel != "" {
-			b.WriteString(" · " + activeModel)
-		}
-		b.WriteString("\n")
-		if res.Reason != "" {
-			b.WriteString(fmt.Sprintf("  why: %s\n", res.Reason))
-		}
-		src, _ := KeySource(activeName)
-		if src != "" {
-			b.WriteString(fmt.Sprintf("  key: %s\n", src))
-		}
-		if len(present) > 1 {
-			var names []string
-			for _, p := range present {
-				if p.Name != normalizeName(activeName) {
-					names = append(names, p.Name)
-				}
-			}
-			if len(names) > 0 {
-				b.WriteString(fmt.Sprintf("  ℹ %d keys detected. Also available: %s\n", len(present), strings.Join(names, ", ")))
-				b.WriteString("    Switch: /provider gemini|grok|claude|openai\n")
-				b.WriteString("    Inspect: /provider   (shows every key source)\n")
-			}
-		}
-	}
-	b.WriteString("\nModes: Shift+Tab = BUILD → DESIGN → YOLO\n")
-	b.WriteString("Help:  /help · /setup · /doctor · /model\n")
-	return b.String()
-}
-
 func normalizeName(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if s == "xai" {

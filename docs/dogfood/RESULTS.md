@@ -34,8 +34,8 @@
 | `A.live_agent` | **SKIP** | no API key / DOGFOOD_LIVE=0 |
 | `A.live_ping` | **SKIP** | no API key / DOGFOOD_LIVE=0 |
 | `A.tui_chat` | **HUMAN** | Open project type question (needs interactive TUI) |
-| `A.at_attach` | **HUMAN** | @ attach file in TUI |
-| `A.review_ui` | **HUMAN** | BUILD review overlay accept/reject in TUI |
+| `A.at_attach` | **API** | filepicker unit; live TUI optional |
+| `A.review_ui` | **API** | ui/review unit (Q5.4); live TUI optional |
 | `A.git_push` | **HUMAN** | /commit+/push on real remote |
 | `B.resume_crash` | **API** | Q4 crash tests + /resume last; live TUI optional |
 | `B.double_esc_rewind` | **HUMAN** | 2x Esc rewind UX |

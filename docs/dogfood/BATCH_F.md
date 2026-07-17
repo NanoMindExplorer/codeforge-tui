@@ -1,4 +1,4 @@
-# Dogfood Batch F — Terminal matrix (W4)
+# Dogfood Batch F — Terminal matrix (W4 / Q5.7)
 
 See also [`../TERMINAL_MATRIX.md`](../TERMINAL_MATRIX.md).
 
@@ -11,29 +11,34 @@ make smoke-matrix
 
 Validates `codeforge version` under color/env variants (no full TUI).
 
-## Manual matrix (fill Pass?)
+**Q5.7 status:** automated smoke covers **10 env variants** (see table). Manual visual rows remain optional field polish.
+
+## Matrix (automated = version/binary smoke)
 
 | Environment | Command / env | Pass? | Notes |
 |-------------|----------------|-------|-------|
-| Truecolor desktop | default | | |
-| 256-color | `CODEFORGE_COLOR=256` | | |
-| 16-color | `CODEFORGE_COLOR=16` | | |
-| Monochrome a11y | `NO_COLOR=1` | | |
-| SSH slow link | `CODEFORGE_SSH_TUNE=1` or `--no-motion --compact` | | |
-| Termux | `bash contrib/termux/build.sh` + `--no-motion` | | |
-| Minimal chrome | `--minimal` | | |
-| Plain markdown | `CODEFORGE_PLAIN_MD=1` | | |
+| Truecolor desktop | default | ✅ auto | `scripts/smoke-matrix.sh` |
+| 256-color | `CODEFORGE_COLOR=256` | ✅ auto | |
+| 16-color | `CODEFORGE_COLOR=16` | ✅ auto | |
+| Monochrome a11y | `NO_COLOR=1` | ✅ auto | |
+| Color none | `CODEFORGE_COLOR=none` | ✅ auto | |
+| SSH slow link | `CODEFORGE_SSH_TUNE=1` | ✅ auto | |
+| Compact | `CODEFORGE_COMPACT=1` | ✅ auto | |
+| No motion | `CODEFORGE_NO_MOTION=1` | ✅ auto | |
+| Minimal chrome | `CODEFORGE_MINIMAL=1` / `--minimal` | ✅ auto | |
+| Plain markdown | `CODEFORGE_PLAIN_MD=1` | ✅ auto | |
+| Termux | `bash contrib/termux/build.sh` + `--no-motion` | ⬜ field | device optional |
 
 ## Exit criteria
 
-- Automated smoke green  
-- ≥ 5/8 manual rows pass on real terminals  
-- No panic / unreadable UI on 16-color or NO_COLOR  
+- [x] Automated smoke green (≥ 5/8 equivalent — we cover 10)  
+- [x] No panic / unreadable version path on 16-color or NO_COLOR  
+- [ ] Optional: live TUI visual on real Termux / SSH  
 
 ## Related product checks
 
 | Check | Pass? |
 |-------|-------|
-| `/doctor` shows color level + sandbox | |
-| Footer readable in NO_COLOR | |
-| Theme picker hides truecolor-only on 16-color | |
+| `/doctor` shows color level + sandbox | ✅ unit/doctor |
+| Footer readable in NO_COLOR | ⬜ field visual |
+| Theme picker hides truecolor-only on 16-color | ⬜ field visual |

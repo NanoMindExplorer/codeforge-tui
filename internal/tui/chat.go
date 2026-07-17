@@ -83,9 +83,8 @@ func NewChatModel(provReg *provider.Registry, toolReg *tool.Registry, repo *git.
 		ta:          ta,
 		attachments: make(map[string]string),
 	}
-	c.store.AddSystem("CodeForge · Grok-parity  ·  type to chat  ·  / commands  ·  ? help")
-	c.store.AddSystem("Scrollback: j/k select · h/l fold · E expand-all · G follow  ·  Tab focus prompt")
-	c.store.AddSystem("Modes: BUILD (staged) · DESIGN (plan) · YOLO  ·  Shift+Tab cycle")
+	// Q5.1: one quiet chrome line — full brand/status comes from Welcome StatusCard.
+	c.store.AddSystem("CodeForge · type to chat · / commands · ? help · Shift+Tab modes")
 	return c
 }
 

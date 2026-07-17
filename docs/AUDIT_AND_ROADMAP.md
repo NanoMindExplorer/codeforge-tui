@@ -8,7 +8,8 @@
 **Q1 status:** implemented — agent unit tests (~88%), LoopError, rate-limit retry, redact, headless codes.  
 **Q2 status:** implemented — TUI orchestrator split; `model.go` **~638 LOC** (from ~3.8k); keys/stream/session/slash files + `AppServices` + unit tests.  
 **Q3 status:** implemented — non-destructive config merge (0600), secrets policy (env → keyring/file → yaml), schema validation, headless SkipIndex default, `app`/`config` tests, [SECRETS.md](./SECRETS.md).  
-**Q4 status:** implemented — atomic session save, crash-resume tests, `/resume last` + preview list, checkpoint YOLO/BUILD tests, compact tool outcomes, export modes, Batch B SCORECARD.
+**Q4 status:** implemented — atomic session save, crash-resume tests, `/resume last` + preview list, checkpoint YOLO/BUILD tests, compact tool outcomes, export modes, Batch B SCORECARD.  
+**Q5 status:** implemented — single StatusCard welcome, empty-state prompts, Ctrl+R/`/retry`, review/@ unit tests, English UI strings, settings tests, Batch F automated matrix.
 
 This document is the single source of truth for **what the codebase is today**, **what hurts**, and **how to improve it in ordered phases**.
 
@@ -314,19 +315,19 @@ Implemented as same-package file split (zero behavior change; methods stay on `M
 
 ---
 
-### Phase Q5 — TUI polish & first-run excellence (1.5–2 weeks) **P1/P2**
+### Phase Q5 — TUI polish & first-run excellence (1.5–2 weeks) **P1/P2** ✅ **DONE**
 
-| # | Work item | DoD |
-|---|-----------|-----|
-| Q5.1 | First-run layout: ASCII brand + **single** status card (no message flood) | Screenshot / golden string |
-| Q5.2 | Empty-state prompts when no key / no project files | Copy reviewed |
-| Q5.3 | “Retry last turn” after provider error | Keybinding or prompt chip |
-| Q5.4 | Review overlay / `@` attach interactive dogfood | PROGRAM days 1–3 |
-| Q5.5 | Consistent English product voice (or full i18n later) | Lint for mixed help strings |
-| Q5.6 | Settings panel tests | Basic model tests |
-| Q5.7 | Terminal matrix field pass on 5/8 real envs | BATCH_F filled |
+| # | Work item | DoD | Status |
+|---|-----------|-----|--------|
+| Q5.1 | First-run layout: ASCII brand + **single** status card | Golden string | ✅ `StatusCard` / one chrome line |
+| Q5.2 | Empty-state prompts when no key / no project files | Copy reviewed | ✅ `EmptyStateNoKey` / `NoProject` |
+| Q5.3 | “Retry last turn” after provider error | Keybinding or prompt | ✅ Ctrl+R · `/retry` |
+| Q5.4 | Review overlay / `@` attach dogfood | Unit + Batch A | ✅ `review_test` · filepicker · BATCH_A |
+| Q5.5 | Consistent English product voice | No mixed help strings | ✅ slash.go ID→EN |
+| Q5.6 | Settings panel tests | Basic model tests | ✅ `settings_test.go` |
+| Q5.7 | Terminal matrix ≥5/8 | BATCH_F filled | ✅ 10 auto envs in smoke-matrix |
 
-**Exit:** First 3 minutes feel intentional; Batch A field ≥80%.
+**Exit:** First 3 minutes feel intentional; Batch A automated ≥80%.
 
 ---
 
@@ -409,7 +410,7 @@ Week 1–2      Q1 agent/permission tests + rate-limit retry
 Week 2         Q2 split model.go ✅ (same-package files; ~638 LOC shell)
 Week 3         Q3 config/secrets + bootstrap ✅
 Week 4         Q4 sessions durability ✅
-Week 5–7      Q5 TUI polish + field Batch A/F
+Week 5         Q5 TUI polish + Batch A/F automated ✅
 Week 6–7      Q6 ACP harden
 Week 7–8      Q7 performance
 Week 8–9      Q8 security

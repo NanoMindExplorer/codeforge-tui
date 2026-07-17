@@ -28,7 +28,7 @@ Live model: Gemini (env key). Host: Linux/aarch64. Details: [RESULTS.md](./dogfo
 | Task | Grok | CodeForge | Evidence |
 |------|------|-----------|----------|
 | Open project, type a question | ⬜ | 🧪 | Live ping `DOGFOOD_PING`; TUI still HUMAN |
-| `@` attach file, get answer | ⬜ | ⬜ | HUMAN — TUI `@` picker |
+| `@` attach file, get answer | ✅ API | ⬜ | filepicker unit (Q5.4); live TUI optional |
 | `/act` multi-step edit | ⬜ | 🧪 | Live agent: read_file+write_file on sample main.go |
 | BUILD staged write → review apply | ⬜ | 🧪 | `TestDogfood_A_BUILD_StagedWrite` / staged unit tests |
 | YOLO immediate write | ⬜ | 🧪 | `TestDogfood_A_YOLO_ImmediateWrite` |

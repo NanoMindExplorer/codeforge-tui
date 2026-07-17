@@ -9,7 +9,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/go-git/go-git/v5 v5.19.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/liushuangls/go-anthropic/v2 v2.21.1
+	github.com/liushuangls/go-anthropic/v2 v2.24.0
 	github.com/lucasb-eyer/go-colorful v1.4.0
 	github.com/muesli/reflow v0.3.0
 	github.com/muesli/termenv v0.16.0

@@ -13,10 +13,24 @@ import (
 )
 
 func TestBackgroundSubagentAndGetOutput(t *testing.T) {
-	// isolate manager
+	// Isolate manager. Keep a local pointer so teardown can wait on THIS
+	// manager even after the package-level SubJobs var is restored.
+	mgr := NewSubJobManager()
 	old := SubJobs
-	SubJobs = NewSubJobManager()
-	defer func() { SubJobs = old }()
+	SubJobs = mgr
+	oldRunner := SubagentRunner
+	t.Cleanup(func() {
+		// Drain in-flight background work on the isolated manager before
+		// restoring globals (race detector: SubJobs var + SubagentRunner).
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) && mgr.RunningCount() > 0 {
+			time.Sleep(10 * time.Millisecond)
+		}
+		// Brief settle so the goroutine can finish notify after status flip.
+		time.Sleep(20 * time.Millisecond)
+		SubJobs = old
+		SubagentRunner = oldRunner
+	})
 
 	dir := t.TempDir()
 	_ = personas.Load(personas.Options{WorkDir: dir})
@@ -33,7 +47,6 @@ func TestBackgroundSubagentAndGetOutput(t *testing.T) {
 			onEvent(SubagentEvent{Kind: "error", Error: "cancelled"})
 		}
 	}
-	defer func() { SubagentRunner = nil }()
 
 	s := &SpawnSubagent{WorkDir: dir}
 	res := s.Execute(json.RawMessage(`{

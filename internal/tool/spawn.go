@@ -225,7 +225,11 @@ func (s *SpawnSubagent) ExecuteStream(input json.RawMessage, progress ProgressFu
 	}
 
 	if in.Background {
-		id := SubJobs.AllocID()
+		// Capture the manager pointer for the background goroutine. Tests (and
+		// rare runtime rebinds) may replace the package-level SubJobs var; the
+		// in-flight job must keep using the manager it was registered on.
+		mgr := SubJobs
+		id := mgr.AllocID()
 		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
 		job := &SubJob{
 			ID:            id,
@@ -243,12 +247,12 @@ func (s *SpawnSubagent) ExecuteStream(input json.RawMessage, progress ProgressFu
 		if job.Description == "" {
 			job.Description = agentType
 		}
-		SubJobs.Put(job)
+		mgr.Put(job)
 
 		go func() {
 			defer cancel()
 			res := executeSubagentRun(ctx, spec, nil)
-			SubJobs.update(id, func(j *SubJob) {
+			mgr.update(id, func(j *SubJob) {
 				j.Ended = time.Now()
 				j.Output = res.output
 				j.Error = res.errStr
@@ -265,8 +269,8 @@ func (s *SpawnSubagent) ExecuteStream(input json.RawMessage, progress ProgressFu
 				}
 				j.cancel = nil
 			})
-			if j, ok := SubJobs.Get(id); ok {
-				SubJobs.notify(&j)
+			if j, ok := mgr.Get(id); ok {
+				mgr.notify(&j)
 			}
 		}()
 

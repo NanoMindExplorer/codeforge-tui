@@ -101,6 +101,9 @@ func FilterRegistryByCapability(base *Registry, mode CapabilityMode, workdir str
 
 func cloneWithoutSpawn(base *Registry) *Registry {
 	r := &Registry{tools: make(map[string]Tool)}
+	if base != nil {
+		r.Authorizer = base.Authorizer // Q6.2: keep session gate on child registries
+	}
 	for _, t := range base.List() {
 		if t.Name() == "spawn_subagent" {
 			continue

@@ -231,10 +231,10 @@ func Bootstrap(opt Options) (*Runtime, error) {
 			onEvent(tool.SubagentEvent{Kind: "error", Error: err.Error()})
 			return
 		}
-		// Bridge optional SubagentAuthorizer → agent.Authorizer
+		// Prefer tools.Authorizer (per-session ACP) over process-wide SubagentAuthorizer (Q6.2).
 		var auth agent.Authorizer
-		if tool.SubagentAuthorizer != nil {
-			auth = subAuthBridge{tool.SubagentAuthorizer}
+		if a := tool.ResolveSubagentAuth(tools); a != nil {
+			auth = subAuthBridge{a}
 		}
 		ch := agent.Run(ctx, agent.Config{
 			Provider: p, Tools: tools, System: system,

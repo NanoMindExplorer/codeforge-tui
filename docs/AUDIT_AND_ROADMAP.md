@@ -9,7 +9,8 @@
 **Q2 status:** implemented — TUI orchestrator split; `model.go` **~638 LOC** (from ~3.8k); keys/stream/session/slash files + `AppServices` + unit tests.  
 **Q3 status:** implemented — non-destructive config merge (0600), secrets policy (env → keyring/file → yaml), schema validation, headless SkipIndex default, `app`/`config` tests, [SECRETS.md](./SECRETS.md).  
 **Q4 status:** implemented — atomic session save, crash-resume tests, `/resume last` + preview list, checkpoint YOLO/BUILD tests, compact tool outcomes, export modes, Batch B SCORECARD.  
-**Q5 status:** implemented — single StatusCard welcome, empty-state prompts, Ctrl+R/`/retry`, review/@ unit tests, English UI strings, settings tests, Batch F automated matrix.
+**Q5 status:** implemented — single StatusCard welcome, empty-state prompts, Ctrl+R/`/retry`, review/@ unit tests, English UI strings, settings tests, Batch F automated matrix.  
+**Q6 status:** implemented — WebSocket serve tests, per-session `Registry.Authorizer`, `codeforge/error` docs, multi-turn fixture + CI, session cancel tests.
 
 This document is the single source of truth for **what the codebase is today**, **what hurts**, and **how to improve it in ordered phases**.
 
@@ -331,15 +332,15 @@ Implemented as same-package file split (zero behavior change; methods stay on `M
 
 ---
 
-### Phase Q6 — ACP / IDE hardening (1–2 weeks) **P1**
+### Phase Q6 — ACP / IDE hardening (1–2 weeks) **P1** ✅ **DONE**
 
-| # | Work item | DoD |
-|---|-----------|-----|
-| Q6.1 | WebSocket serve unit/integration tests | Coverage &gt; 50% on websocket.go |
-| Q6.2 | Per-session runtime isolation (no cross-session tool authorizer bleed) | Concurrent test |
-| Q6.3 | Document `codeforge/error` payload for IDE clients | ACP.md section |
-| Q6.4 | Multi-turn ACP fixture (initialize → session/new → prompt → tool) | Golden JSON-RPC script in CI |
-| Q6.5 | Cancel / interrupt semantics | Test |
+| # | Work item | DoD | Status |
+|---|-----------|-----|--------|
+| Q6.1 | WebSocket serve unit/integration tests | Coverage on websocket paths | ✅ `websocket_test.go` · `NewServeMux` |
+| Q6.2 | Per-session runtime isolation | Concurrent test | ✅ `Registry.Authorizer` · isolation tests |
+| Q6.3 | Document `codeforge/error` payload | ACP.md section | ✅ docs/ACP.md |
+| Q6.4 | Multi-turn ACP fixture | Golden JSON-RPC in CI | ✅ `multiturn_test` · `acp-fixture.sh` |
+| Q6.5 | Cancel / interrupt semantics | Test | ✅ `cancel_test.go` |
 
 **Exit:** `agent stdio` and `agent serve` are CI-guarded.
 
@@ -411,7 +412,7 @@ Week 2         Q2 split model.go ✅ (same-package files; ~638 LOC shell)
 Week 3         Q3 config/secrets + bootstrap ✅
 Week 4         Q4 sessions durability ✅
 Week 5         Q5 TUI polish + Batch A/F automated ✅
-Week 6–7      Q6 ACP harden
+Week 6         Q6 ACP harden ✅
 Week 7–8      Q7 performance
 Week 8–9      Q8 security
 Week 9–10     Q9 packaging

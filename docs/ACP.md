@@ -131,3 +131,62 @@ codeforge agent serve --bind 127.0.0.1:2419 --secret secret
 ```
 
 Health: `GET http://127.0.0.1:2419/health` → `ok`
+
+## `codeforge/error` session update (Q6.3)
+
+When a provider/agent error occurs mid-turn, the agent may emit a **structured**
+`session/update` notification in addition to a human-readable text chunk:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "…",
+    "update": {
+      "sessionUpdate": "codeforge/error",
+      "code": "rate_limit",
+      "message": "Rate limited by the provider",
+      "hint": "Wait a moment, then retry",
+      "retry": true
+    }
+  }
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `sessionUpdate` | string | Always `"codeforge/error"` |
+| `code` | string | Stable machine code (`auth`, `rate_limit`, `network`, `timeout`, `budget`, `cancelled`, `max_iterations`, `unsupported`, …) |
+| `message` | string | User-facing summary (no stack / raw JSON dump) |
+| `hint` | string | Optional recovery guidance |
+| `retry` | bool | Client may offer “retry last turn” |
+
+**IDE guidance:** surface `message` + `hint` in the UI; use `code` for icons / analytics; if `retry` is true, offer re-send of the last user prompt.
+
+Standard JSON-RPC `error` objects on responses remain for protocol failures (`-32600` parse/params/method).
+
+## Cancel / interrupt (Q6.5)
+
+```json
+{"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":"…"}}
+```
+
+This is a **notification** (no `id`). The agent cancels the in-flight `session/prompt` context; the prompt response (when sent) uses `stopReason: "cancelled"`.
+
+## Multi-session isolation (Q6.2)
+
+Each `session/new` creates an independent tool registry with its own permission
+engine (`Registry.Authorizer`). Nested `spawn_subagent` children resolve the
+authorizer from the **session registry first**, then the process-wide fallback.
+Concurrent sessions must not share a single global authorizer for tool gates.
+
+## CI fixtures (Q6.1 / Q6.4)
+
+```bash
+bash scripts/acp-fixture.sh
+# or: go test ./internal/acp/ -count=1
+```
+
+Covers: WebSocket health/auth/initialize, multi-turn prompt+tool events (fake runner),
+stdio scripted initialize, session cancel interrupt.

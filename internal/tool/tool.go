@@ -479,6 +479,9 @@ func SetBackgroundStarter(fn func(workdir, command string) (string, error)) {
 type Registry struct {
 	tools map[string]Tool
 	order []string
+	// Authorizer gates spawn_subagent children for this registry (Q6.2).
+	// Prefer over process-wide SubagentAuthorizer so multi-session ACP does not bleed.
+	Authorizer SubagentAuth
 }
 
 func NewRegistry(workDir string) *Registry {
@@ -516,7 +519,7 @@ func NewRegistry(workDir string) *Registry {
 	r.Register(&WebSearch{})
 	r.Register(&MemorySearch{})
 	r.Register(&MemoryWrite{})
-	r.Register(&SpawnSubagent{WorkDir: workDir})
+	r.Register(&SpawnSubagent{WorkDir: workDir, parent: r})
 	getSub := &GetSubagentOutput{}
 	r.Register(getSub)
 	r.Register(&AskUserQuestion{})

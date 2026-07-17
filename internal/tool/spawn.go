@@ -40,12 +40,26 @@ type SubagentAuth interface {
 	NotifyPost(ctx context.Context, toolName, input, output string, success bool)
 }
 
-// SubagentAuthorizer is the active gate for spawn_subagent children (may be nil).
+// SubagentAuthorizer is the process-wide fallback gate for spawn_subagent children.
+// Prefer Registry.Authorizer for multi-session isolation (ACP Q6.2).
 var SubagentAuthorizer SubagentAuth
 
 // SpawnSubagent runs a nested agent turn (Grok spawn_subagent parity — Phase G6/G7).
 type SpawnSubagent struct {
 	WorkDir string
+	// parent is the registry that owns this tool (set at registration).
+	parent *Registry
+}
+
+// ResolveSubagentAuth returns the authorizer for a tools registry (session-local first).
+func ResolveSubagentAuth(tools *Registry) SubagentAuth {
+	if tools != nil && tools.Authorizer != nil {
+		return tools.Authorizer
+	}
+	if tools != nil && tools != SubagentParentRegistry && SubagentParentRegistry != nil && SubagentParentRegistry.Authorizer != nil {
+		return SubagentParentRegistry.Authorizer
+	}
+	return SubagentAuthorizer
 }
 
 func (s *SpawnSubagent) Name() string { return "spawn_subagent" }
@@ -212,6 +226,8 @@ func (s *SpawnSubagent) ExecuteStream(input json.RawMessage, progress ProgressFu
 		maxIter = 16
 	}
 
+	// Prefer registry-local authorizer (ACP multi-session) over process global.
+	auth := ResolveSubagentAuth(s.parent)
 	spec := runSpec{
 		ParentWorkDir: s.WorkDir,
 		Task:          task,
@@ -222,6 +238,7 @@ func (s *SpawnSubagent) ExecuteStream(input json.RawMessage, progress ProgressFu
 		Persona:       persona,
 		MaxIter:       maxIter,
 		Prior:         prior,
+		Auth:          auth,
 	}
 
 	if in.Background {
@@ -355,6 +372,8 @@ type runSpec struct {
 	Persona       *personas.Persona
 	MaxIter       int
 	Prior         *SubJob
+	// Auth is the session-local permission gate for nested agents (Q6.2).
+	Auth SubagentAuth
 }
 
 type runResult struct {
@@ -389,6 +408,14 @@ func executeSubagentRun(ctx context.Context, spec runSpec, progress ProgressFunc
 	}
 
 	tools := buildSubagentTools(spec.AgentType, spec.CapMode, workdir)
+	if tools != nil {
+		// Inherit session authorizer so concurrent ACP sessions do not share one gate.
+		if spec.Auth != nil {
+			tools.Authorizer = spec.Auth
+		} else if tools.Authorizer == nil {
+			tools.Authorizer = ResolveSubagentAuth(SubagentParentRegistry)
+		}
+	}
 	sys := buildSubagentSystem(spec.AgentType, spec.Persona, spec.Description)
 	if spec.Prior != nil && strings.TrimSpace(spec.Prior.System) != "" {
 		sys = spec.Prior.System + "\n\n# Resumed subagent\nContinue from prior work with the new user message."

@@ -362,9 +362,9 @@ When implementing further changes, each PR should:
 
 ## Living checklist
 
-> **Status sync:** last updated for **v1.9.3** + audit phases **Q0–Q5**.  
+> **Status sync:** last updated for **v1.9.3** + audit phases **Q0–Q6**.  
 > Detail for each phase is in the body of this doc; this section is the at-a-glance status only.  
-> Post-parity quality track: see [`AUDIT_AND_ROADMAP.md`](./AUDIT_AND_ROADMAP.md) (Q0–Q4 + **Q5 TUI polish**).
+> Post-parity quality track: see [`AUDIT_AND_ROADMAP.md`](./AUDIT_AND_ROADMAP.md) (Q0–Q5 + **Q6 ACP**).
 
 ### Phase 0 — Contract
 - [x] Roadmap written

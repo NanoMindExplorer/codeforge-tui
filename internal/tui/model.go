@@ -193,8 +193,11 @@ func New(cfg *config.Config, provReg *provider.Registry, toolReg *tool.Registry,
 		}
 	}
 	chat.Auth = permEng
-	// Nested spawn_subagent inherits the same permission engine
+	// Nested spawn_subagent inherits the same permission engine (registry-local first).
 	tool.SubagentAuthorizer = permEng
+	if toolReg != nil {
+		toolReg.Authorizer = permEng
+	}
 	// Project rules
 	rb := rules.Get()
 	if rb != nil && rb.Text != "" {

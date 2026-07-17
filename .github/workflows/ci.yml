@@ -45,6 +45,8 @@ jobs:
           out=$(./codeforge version)
           echo "$out"
           echo "$out" | grep -q "$VER"
+      - name: ACP fixtures (stdio + WebSocket)
+        run: bash scripts/acp-fixture.sh
 
   race:
     runs-on: ubuntu-latest

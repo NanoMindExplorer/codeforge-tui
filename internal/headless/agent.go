@@ -169,6 +169,9 @@ Reply with a clear summary of what you did.`
 		eng.SetMode(permission.ModePlan)
 	}
 	tool.SubagentAuthorizer = eng
+	if rt.ToolReg != nil {
+		rt.ToolReg.Authorizer = eng
+	}
 
 	ch := agent.Run(ctx, agent.Config{
 		Provider:      p,

@@ -81,9 +81,10 @@ type acpSession struct {
 	// Runtime wired on first prompt
 	rt    *app.Runtime
 	tools *tool.Registry
-	auth  *permission.Engine
-	prov  provider.Provider
-	cf    *session.Session // CodeForge durable session
+	// auth gates tools; *permission.Engine implements agent.Authorizer
+	auth agent.Authorizer
+	prov provider.Provider
+	cf   *session.Session // CodeForge durable session
 }
 
 // NewServer creates an ACP server (transport set via SetTransport).
@@ -243,7 +244,9 @@ func (s *Server) doSessionNew(params json.RawMessage) (SessionNewResult, error) 
 	if s.opt.Plan {
 		eng.SetMode(permission.ModePlan)
 	}
-	tool.SubagentAuthorizer = eng
+	// Q6.2: bind authorizer on this session's registry only (no process-wide bleed).
+	// Also keep SubagentParentRegistry pointing at a registry with Authorizer set
+	// when this session is active during prompt (see doSessionPrompt).
 
 	sys := `You are CodeForge ACP agent for IDE integration. Be concise and complete tasks.
 Prefer search_replace/apply_patch. Use tools when needed. Reply in the user's language.`
@@ -263,6 +266,10 @@ Prefer search_replace/apply_patch. Use tools when needed. Reply in the user's la
 	_ = cfSess.Save()
 	id := cfSess.ID
 
+	// Per-session tool authorizer for spawn_subagent isolation (Q6.2)
+	if rt.ToolReg != nil {
+		rt.ToolReg.Authorizer = eng
+	}
 	as := &acpSession{
 		ID: id, WorkDir: cwd, System: sys,
 		rt: rt, tools: rt.ToolReg, auth: eng, prov: prov, cf: cfSess,
@@ -355,10 +362,19 @@ func (s *Server) doSessionPrompt(req Request) {
 		prev()
 	}
 	s.cancels[p.SessionID] = cancel
+	// Q6.2: install this session's tools as spawn parent for the duration of the turn.
+	// Capture previous and restore so concurrent sessions keep their own registry.Authorizer
+	// (spawn resolves via tools.Authorizer first; parent pointer is best-effort for MCP).
+	prevParent := tool.SubagentParentRegistry
+	if as.tools != nil {
+		as.tools.Authorizer = as.auth
+		tool.SubagentParentRegistry = as.tools
+	}
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		delete(s.cancels, p.SessionID)
+		tool.SubagentParentRegistry = prevParent
 		s.mu.Unlock()
 		cancel()
 	}()
